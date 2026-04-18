@@ -86,7 +86,7 @@ const App: React.FC = () => {
 
       setNews(n || []);
       setLogs(l || []);
-      setSponsoredMedia(processedMedia.filter(item => item.type === 'video' || item.type === 'image'));
+      setSponsoredMedia(processedMedia.filter(item => item.type === 'video' || item.type === 'image' || item.type === 'youtube' || item.type === 'iptv'));
       setAudioPlaylist(processedMedia.filter(item => item.type === 'audio'));
       setAdminMessages(msg || []);
       setReports(rep || []);
@@ -128,6 +128,12 @@ const App: React.FC = () => {
   }, []);
 
   const runScheduledBroadcast = useCallback(async (isBrief: boolean) => {
+    // Skip broadcast if listener isn't actively listening to the radio
+    if (!isRadioPlaying) {
+      console.log(`⏭ Skipping ${isBrief ? 'headline' : 'detailed'} broadcast — radio is off`);
+      return;
+    }
+
     if (isSyncingRef.current) return;
     isSyncingRef.current = true;
     try {
@@ -144,12 +150,13 @@ const App: React.FC = () => {
         // Remember if music was playing before broadcast
         wasPlayingBeforeBroadcastRef.current = isRadioPlaying;
 
-        // Step 2: Intro jingle (music ducked to 30%)
+        // Step 1: Intro jingle — music ducked to 30%
         setMusicVolumeOverride(0.30);
         setIsDucking(true);
         await getJingleAudio(JINGLE_1);
 
-        // Step 3: Read bulletin (service handles duck/stop internally)
+        // Step 2: Read bulletin — handles its own duck/stop internally
+        // Anchor goes silent after sign-off, does NOT resume music
         await getDetailedBulletinAudio({
           location: currentLocation,
           localTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -164,10 +171,10 @@ const App: React.FC = () => {
           timestamp: Date.now()
         });
 
-        // Step 4: Outro jingle (music still off)
+        // Step 3: Outro jingle plays in silence — anchor has already signed off
         await getJingleAudio(JINGLE_2);
 
-        // Step 5: Restore music volume and resume if it was playing before
+        // Step 4: ONLY NOW restore music — after the jingle finishes
         setMusicVolumeOverride(null);
         setIsDucking(false);
         if (wasPlayingBeforeBroadcastRef.current) {

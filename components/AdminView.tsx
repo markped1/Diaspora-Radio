@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { dbService } from '../services/dbService';
-import { AdminLog, MediaFile, NewsItem, ListenerReport } from '../types';
+import { AdminLog, MediaFile, NewsItem, ListenerReport, SportChannel } from '../types';
 import TvMonitor from './TvMonitor';
+import SportsTv from './SportsTv';
 
 interface AdminViewProps {
   onRefreshData: () => void;
@@ -22,7 +23,7 @@ interface AdminViewProps {
   onTriggerFullBulletin?: () => Promise<void>;
 }
 
-type Tab = 'command' | 'bulletin' | 'media' | 'inbox' | 'logs';
+type Tab = 'command' | 'bulletin' | 'tv' | 'sports' | 'media' | 'inbox' | 'logs';
 type MediaSubTab = 'audio' | 'video';
 
 const AdminView: React.FC<AdminViewProps> = ({ 
@@ -141,9 +142,9 @@ const AdminView: React.FC<AdminViewProps> = ({
 
       <div className="flex items-center space-x-1.5 px-0.5">
         <div className="flex-grow flex space-x-1 bg-[#008751]/10 p-1 rounded-xl border border-green-200 shadow-sm overflow-x-auto no-scrollbar">
-          {(['command', 'bulletin', 'media', 'inbox', 'logs'] as Tab[]).map(t => (
-            <button key={t} onClick={() => setActiveTab(t)} className={`flex-1 min-w-[65px] py-2 text-[9.5px] font-black uppercase tracking-widest rounded-lg transition-all relative ${activeTab === t ? 'bg-[#008751] text-white shadow-md' : 'text-green-950/50 hover:text-green-950'}`}>
-              {t === 'bulletin' ? 'Newsroom' : t}
+          {(['command', 'bulletin', 'tv', 'sports', 'media', 'inbox', 'logs'] as Tab[]).map(t => (
+            <button key={t} onClick={() => setActiveTab(t)} className={`flex-1 min-w-[44px] py-2 text-[7px] font-black uppercase tracking-widest rounded-lg transition-all relative ${activeTab === t ? 'bg-[#008751] text-white shadow-md' : 'text-green-950/50 hover:text-green-950'}`}>
+              {t === 'bulletin' ? 'News' : t === 'tv' ? 'TV' : t === 'sports' ? '⚽' : t}
               {t === 'inbox' && reports.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[6px] w-3 h-3 rounded-full flex items-center justify-center border border-white animate-bounce">{reports.length}</span>}
             </button>
           ))}
@@ -253,42 +254,74 @@ const AdminView: React.FC<AdminViewProps> = ({
         </div>
       )}
 
+      {activeTab === 'tv' && (
+        <div className="space-y-3">
+          <div className="bg-gray-950 px-4 py-3 rounded-xl flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-black text-white uppercase tracking-wide">TV Studio</h2>
+              <p className="text-[7px] text-gray-400 uppercase tracking-widest mt-0.5">Preview, edit and push video live</p>
+            </div>
+            <button
+              onClick={() => triggerUpload('video/*,image/*')}
+              className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-[7px] font-black uppercase flex items-center space-x-1"
+            >
+              <i className="fas fa-cloud-upload-alt text-[8px]"></i>
+              <span>Upload</span>
+            </button>
+          </div>
+          <TvMonitor mediaList={mediaList} onMediaUpdated={async () => { await loadData(); onRefreshData(); }} />
+        </div>
+      )}
+
+      {activeTab === 'sports' && (
+        <SportsTv
+          onPushLive={async (ch: SportChannel) => {
+            // Convert SportChannel to MediaFile and push to listener screen
+            const mediaItem: MediaFile = {
+              id: ch.id,
+              name: ch.name,
+              url: ch.url,
+              type: ch.url.includes('.m3u8') ? 'iptv' : 'youtube',
+              timestamp: ch.timestamp,
+              isLive: true,
+              caption: ch.matchInfo,
+              sponsorName: ch.category,
+            };
+            await dbService.updateMedia(mediaItem);
+            onRefreshData();
+          }}
+        />
+      )}
+
       {activeTab === 'media' && (
         <div className="space-y-4">
-          <div className="flex bg-[#008751]/5 p-1 rounded-xl border border-green-100">
-             <button onClick={() => setMediaSubTab('audio')} className={`flex-1 py-2 text-[8px] font-black uppercase rounded-lg ${mediaSubTab === 'audio' ? 'bg-white text-[#008751] shadow-sm' : 'text-green-600/60'}`}>Tracks</button>
-             <button onClick={() => setMediaSubTab('video')} className={`flex-1 py-2 text-[8px] font-black uppercase rounded-lg ${mediaSubTab === 'video' ? 'bg-white text-[#008751] shadow-sm' : 'text-green-600/60'}`}>TV Studio</button>
-          </div>
-
-          {mediaSubTab === 'video' && (
-            <div className="space-y-3">
-              <button
-                onClick={() => triggerUpload('video/*,image/*')}
-                className="w-full bg-blue-600 text-white py-3 rounded-2xl flex items-center justify-center space-x-2 shadow-lg active:scale-95 transition-all"
-              >
-                <i className="fas fa-cloud-upload-alt"></i>
-                <span className="text-[10px] font-black uppercase tracking-widest">Upload Video / Image</span>
-              </button>
-              <TvMonitor mediaList={mediaList} onMediaUpdated={async () => { await loadData(); onRefreshData(); }} />
-            </div>
-          )}
-
-          {mediaSubTab === 'audio' && (
-            <div className="grid gap-2">
-              {filteredMedia.map(item => (
-                <div key={item.id} className="bg-white p-3 rounded-xl border border-green-50 flex items-center justify-between shadow-sm animate-scale-in">
-                  <div className="flex items-center space-x-3 truncate pr-4">
-                    <i className="fas fa-music text-xs text-green-600"></i>
-                    <p className="text-[9px] font-bold text-green-950 truncate">{item.name}</p>
-                  </div>
-                  <div className="flex space-x-1">
-                     <button onClick={() => onPlayTrack(item)} className="w-7 h-7 bg-green-50 text-green-600 rounded-full flex items-center justify-center"><i className="fas fa-play text-[8px]"></i></button>
-                     <button onClick={() => dbService.deleteMedia(item.id).then(loadData)} className="w-7 h-7 bg-red-50 text-red-500 rounded-full flex items-center justify-center"><i className="fas fa-trash-alt text-[8px]"></i></button>
-                  </div>
+          <button
+            onClick={() => triggerUpload('audio/*')}
+            className="w-full bg-[#008751] text-white py-3 rounded-2xl flex items-center justify-center space-x-2 shadow-lg active:scale-95 transition-all"
+          >
+            <i className="fas fa-music"></i>
+            <span className="text-[10px] font-black uppercase tracking-widest">Upload Audio Tracks</span>
+          </button>
+          <div className="grid gap-2">
+            {mediaList.filter(m => m.type === 'audio').map(item => (
+              <div key={item.id} className="bg-white p-3 rounded-xl border border-green-50 flex items-center justify-between shadow-sm animate-scale-in">
+                <div className="flex items-center space-x-3 truncate pr-4">
+                  <i className="fas fa-music text-xs text-green-600"></i>
+                  <p className="text-[9px] font-bold text-green-950 truncate">{item.name}</p>
                 </div>
-              ))}
-            </div>
-          )}
+                <div className="flex space-x-1">
+                  <button onClick={() => onPlayTrack(item)} className="w-7 h-7 bg-green-50 text-green-600 rounded-full flex items-center justify-center"><i className="fas fa-play text-[8px]"></i></button>
+                  <button onClick={() => dbService.deleteMedia(item.id).then(loadData)} className="w-7 h-7 bg-red-50 text-red-500 rounded-full flex items-center justify-center"><i className="fas fa-trash-alt text-[8px]"></i></button>
+                </div>
+              </div>
+            ))}
+            {mediaList.filter(m => m.type === 'audio').length === 0 && (
+              <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-8 text-center">
+                <i className="fas fa-music text-2xl text-gray-200 mb-2 block"></i>
+                <p className="text-[7px] text-gray-300 font-black uppercase">No audio tracks uploaded yet</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
       

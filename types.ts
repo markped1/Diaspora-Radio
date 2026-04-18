@@ -13,14 +13,15 @@ export interface NewsItem {
 export interface MediaFile {
   id: string;
   name: string;
-  url: string; // This will hold the Object URL in-memory
-  file?: File | Blob; // The persistent binary data
-  type: 'audio' | 'video' | 'image';
+  url: string;
+  file?: File | Blob;
+  type: 'audio' | 'video' | 'image' | 'youtube' | 'iptv';
   timestamp: number;
   likes?: number;
-  isLive?: boolean;       // Whether this video is pushed to listener screen
-  caption?: string;       // Optional caption shown on listener screen
-  sponsorName?: string;   // Sponsor label shown on listener screen
+  isLive?: boolean;
+  caption?: string;
+  sponsorName?: string;
+  youtubeId?: string; // YouTube video/stream ID
 }
 
 export interface AdminMessage {
@@ -47,6 +48,25 @@ export interface ListenerReport {
   reporterName: string;
   location: string;
   content: string;
+  timestamp: number;
+}
+
+export interface SocialLink {
+  id: string;
+  platform: 'facebook' | 'twitter' | 'instagram' | 'youtube' | 'tiktok' | 'whatsapp' | 'telegram' | 'website' | 'other';
+  label: string;
+  url: string;
+  timestamp: number;
+}
+
+export interface SportChannel {
+  id: string;
+  name: string;
+  url: string;           // embed URL or m3u8 or iframe src
+  logo: string;          // emoji or image URL
+  category: 'Football' | 'Basketball' | 'Cricket' | 'Tennis' | 'Boxing' | 'MMA' | 'Rugby' | 'Movies' | 'General';
+  isLive?: boolean;
+  matchInfo?: string;    // e.g. "Man Utd vs Arsenal — 20:00"
   timestamp: number;
 }
 

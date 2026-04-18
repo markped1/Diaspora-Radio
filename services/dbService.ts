@@ -1,5 +1,5 @@
 
-import { NewsItem, DjScript, AdminLog, MediaFile, AdminMessage, ListenerReport } from '../types';
+import { NewsItem, DjScript, AdminLog, MediaFile, AdminMessage, ListenerReport, SocialLink, SportChannel } from '../types';
 
 const DB_NAME = 'NDN_RADIO_DB';
 const MEDIA_STORE = 'media_files';
@@ -13,7 +13,9 @@ class DBService {
     LOGS: 'ndn_radio_logs',
     ADMIN_MSGS: 'ndn_radio_admin_msgs',
     REPORTS: 'ndn_radio_reports',
-    LAST_SYNC: 'ndn_radio_last_sync'
+    LAST_SYNC: 'ndn_radio_last_sync',
+    SOCIAL_LINKS: 'ndn_radio_social_links',
+    SPORT_CHANNELS: 'ndn_radio_sport_channels',
   };
 
   private async getDB(): Promise<IDBDatabase> {
@@ -177,6 +179,48 @@ class DBService {
   async getLogs(): Promise<AdminLog[]> {
     const data = localStorage.getItem(this.STORAGE_KEYS.LOGS);
     return data ? JSON.parse(data) : [];
+  }
+
+  async getSocialLinks(): Promise<SocialLink[]> {
+    const data = localStorage.getItem(this.STORAGE_KEYS.SOCIAL_LINKS);
+    return data ? JSON.parse(data) : [];
+  }
+
+  async saveSocialLink(link: SocialLink): Promise<void> {
+    const links = await this.getSocialLinks();
+    const idx = links.findIndex(l => l.id === link.id);
+    if (idx >= 0) links[idx] = link;
+    else links.push(link);
+    localStorage.setItem(this.STORAGE_KEYS.SOCIAL_LINKS, JSON.stringify(links));
+  }
+
+  async deleteSocialLink(id: string): Promise<void> {
+    const links = await this.getSocialLinks();
+    localStorage.setItem(
+      this.STORAGE_KEYS.SOCIAL_LINKS,
+      JSON.stringify(links.filter(l => l.id !== id))
+    );
+  }
+
+  async getSportChannels(): Promise<SportChannel[]> {
+    const data = localStorage.getItem(this.STORAGE_KEYS.SPORT_CHANNELS);
+    return data ? JSON.parse(data) : [];
+  }
+
+  async saveSportChannel(ch: SportChannel): Promise<void> {
+    const channels = await this.getSportChannels();
+    const idx = channels.findIndex(c => c.id === ch.id);
+    if (idx >= 0) channels[idx] = ch;
+    else channels.unshift(ch);
+    localStorage.setItem(this.STORAGE_KEYS.SPORT_CHANNELS, JSON.stringify(channels));
+  }
+
+  async deleteSportChannel(id: string): Promise<void> {
+    const channels = await this.getSportChannels();
+    localStorage.setItem(
+      this.STORAGE_KEYS.SPORT_CHANNELS,
+      JSON.stringify(channels.filter(c => c.id !== id))
+    );
   }
 }
 

@@ -1,5 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Logo from './Logo';
+import {
+  isBroadcastActive,
+  isBroadcastPaused,
+  pauseBroadcast,
+  resumeBroadcast,
+  stopBroadcast,
+  setBroadcastVolume,
+} from '../services/aiDjService';
+import { webSpeechSpeak } from '../services/webSpeechService';
+import { JINGLE_DJ } from '../constants';
 
 interface RadioPlayerProps {
   onStateChange: (isPlaying: boolean) => void;
@@ -9,7 +19,7 @@ interface RadioPlayerProps {
   onTrackEnded?: () => void;
   isAdmin?: boolean;
   isDucking?: boolean;
-  musicVolumeOverride?: number | null; // null = use normal volume, 0-1 = override
+  musicVolumeOverride?: number | null;
 }
 
 const RadioPlayer: React.FC<RadioPlayerProps> = ({
@@ -27,6 +37,27 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const broadcastingRef = useRef(false);
+  const midJingleFiredRef = useRef(false);   // tracks if DJ jingle already played this song
+  const midJingleRunningRef = useRef(false); // prevents double-fire
+
+  // Poll broadcast state — debounced to avoid flicker between segments
+  useEffect(() => {
+    const poll = setInterval(() => {
+      const active = isBroadcastActive();
+      if (active !== broadcastingRef.current) {
+        broadcastingRef.current = active;
+        setIsBroadcasting(active);
+      }
+    }, 300);
+    return () => clearInterval(poll);
+  }, []);
+
+  // Reset mid-jingle flag when track changes
+  useEffect(() => {
+    midJingleFiredRef.current = false;
+  }, [activeTrackUrl]);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
@@ -147,7 +178,33 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     audio.addEventListener('waiting', () => setStatus('LOADING'));
     audio.addEventListener('playing', handlePlay);
     audio.addEventListener('ended', () => onTrackEndedRef.current?.());
-    audio.addEventListener('timeupdate', () => setCurrentTime(audio.currentTime));
+    audio.addEventListener('timeupdate', () => {
+      const t = audio.currentTime;
+      const d = audio.duration;
+      setCurrentTime(t);
+
+      // Mid-song DJ jingle — fires once at 50% of track duration
+      if (
+        d > 10 &&
+        isFinite(d) &&
+        t >= d * 0.5 &&
+        !midJingleFiredRef.current &&
+        !midJingleRunningRef.current &&
+        !isBroadcastActive()
+      ) {
+        midJingleFiredRef.current  = true;
+        midJingleRunningRef.current = true;
+
+        // Duck music, speak jingle, restore
+        const prevVol = audio.volume;
+        audio.volume = Math.max(0, prevVol * 0.15);
+
+        webSpeechSpeak(JINGLE_DJ, { rate: 1.25, pitch: 1.2 }).then(() => {
+          audio.volume = prevVol;
+          midJingleRunningRef.current = false;
+        });
+      }
+    });
     audio.addEventListener('loadedmetadata', () => setDuration(audio.duration));
     audio.addEventListener('canplay', handleCanPlay);
     audio.addEventListener('loadstart', handleLoadStart);
@@ -260,6 +317,16 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   }, [volume, isDucking, musicVolumeOverride]);
 
   const handlePlayPause = async () => {
+    // If a news broadcast is active, pause/resume/stop it
+    if (isBroadcasting) {
+      if (isBroadcastPaused()) {
+        resumeBroadcast();
+      } else {
+        pauseBroadcast();
+      }
+      return;
+    }
+
     if (!audioRef.current || !activeTrackUrl) return;
 
     if (isPlaying) {
@@ -267,12 +334,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     } else {
       setStatus('LOADING');
       setErrorMessage('');
-
-      // Only init audio context for local files
-      if (!isStreamRef.current) {
-        initAudioContext();
-      }
-
+      if (!isStreamRef.current) initAudioContext();
       try {
         await audioRef.current.play();
       } catch (err: any) {
@@ -280,6 +342,26 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
         setStatus('ERROR');
         setErrorMessage(err.message || 'Failed to play stream');
       }
+    }
+  };
+
+  const handleStop = () => {
+    if (isBroadcasting) {
+      stopBroadcast();
+      return;
+    }
+    if (audioRef.current) audioRef.current.pause();
+  };
+
+  const handleVolumeChange = (val: number) => {
+    setVolume(val);
+    if (isBroadcasting) {
+      // During broadcast: control speech volume directly
+      setBroadcastVolume(val);
+    }
+    // Always update the audio element too (for when broadcast ends)
+    if (audioRef.current && musicVolumeOverride === null) {
+      audioRef.current.volume = val;
     }
   };
 
@@ -308,9 +390,15 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
       <div className="flex flex-col items-center space-y-3 relative z-20 w-full px-12">
         {/* Track Info Display */}
-        <div className="bg-[#008751]/10 px-4 py-2 rounded-full border border-green-200/50 w-full overflow-hidden shadow-inner flex items-center justify-center text-center">
-          <span className="text-[7px] font-black uppercase text-green-800 tracking-widest line-clamp-1">
-            {activeTrackUrl ? `NOW PLAYING: ${currentTrackName}` : 'NO AUDIO SELECTED'}
+        <div className={`px-4 py-2 rounded-full border w-full overflow-hidden shadow-inner flex items-center justify-center text-center ${
+          isBroadcasting ? 'bg-red-50 border-red-200' : 'bg-[#008751]/10 border-green-200/50'
+        }`}>
+          <span className={`text-[7px] font-black uppercase tracking-widest line-clamp-1 ${
+            isBroadcasting ? 'text-red-700' : 'text-green-800'
+          }`}>
+            {isBroadcasting
+              ? (isBroadcastPaused() ? '⏸ BROADCAST PAUSED' : '🔴 LIVE BROADCAST — TAP TO PAUSE')
+              : (activeTrackUrl ? `NOW PLAYING: ${currentTrackName}` : 'NO AUDIO SELECTED')}
           </span>
         </div>
 
@@ -321,21 +409,45 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
           </div>
         )}
 
-        <button
-          onClick={handlePlayPause}
-          className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all ${status === 'ERROR' ? 'bg-red-500' : 'bg-[#008751]'} text-white border-4 border-white`}
-          disabled={status === 'LOADING'}
-        >
-          {status === 'LOADING' ? <i className="fas fa-circle-notch fa-spin"></i> :
-            status === 'ERROR' ? <i className="fas fa-exclamation-triangle"></i> :
-              isPlaying ? <i className="fas fa-pause text-lg"></i> : <i className="fas fa-play text-lg ml-1"></i>}
-        </button>
+        {/* Play/Pause button — controls both music and broadcast */}
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={handlePlayPause}
+            className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all border-4 border-white ${
+              isBroadcasting
+                ? (isBroadcastPaused() ? 'bg-amber-500' : 'bg-red-500')
+                : status === 'ERROR' ? 'bg-red-500' : 'bg-[#008751]'
+            } text-white`}
+            disabled={status === 'LOADING' && !isBroadcasting}
+          >
+            {status === 'LOADING' && !isBroadcasting
+              ? <i className="fas fa-circle-notch fa-spin"></i>
+              : isBroadcasting
+                ? <i className={`fas ${isBroadcastPaused() ? 'fa-play' : 'fa-pause'} text-lg`}></i>
+                : status === 'ERROR'
+                  ? <i className="fas fa-exclamation-triangle"></i>
+                  : isPlaying
+                    ? <i className="fas fa-pause text-lg"></i>
+                    : <i className="fas fa-play text-lg ml-1"></i>}
+          </button>
+
+          {/* Stop broadcast button — only shown during broadcast */}
+          {isBroadcasting && (
+            <button
+              onClick={handleStop}
+              className="w-10 h-10 rounded-full bg-gray-800 text-white flex items-center justify-center shadow-lg active:scale-95 border-2 border-white"
+              title="Stop broadcast"
+            >
+              <i className="fas fa-stop text-sm"></i>
+            </button>
+          )}
+        </div>
 
         <div className="w-32 flex items-center space-x-2">
           <i className="fas fa-volume-down text-green-600 text-[8px]"></i>
           <input
             type="range" min="0" max="1" step="0.01" value={volume}
-            onChange={(e) => setVolume(parseFloat(e.target.value))}
+            onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
             className="flex-grow h-0.5 bg-green-100 rounded-lg appearance-none accent-[#008751]"
           />
           <i className="fas fa-volume-up text-green-600 text-[8px]"></i>

@@ -8,3 +8,4 @@ export const ADMIN_PASSWORD_HASH = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc
 
 export const JINGLE_1 = "Nigeria Diaspora Radio: Nigerians Voice Abroad";
 export const JINGLE_2 = "Nigeria Diaspora Radio: The Diasporans News Stand";
+export const JINGLE_DJ = "You are locked in with DJ Obosa! Grooving the rock, only on Nigeria Diaspora Radio TV! The hottest sounds, the freshest vibes, keeping you connected to home. This is DJ Obosa — and we are grooving the rock on NDR TV!";

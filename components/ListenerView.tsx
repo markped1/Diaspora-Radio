@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import SponsoredVideo from './SponsoredVideo';
+import IptvPlayer from './IptvPlayer';
 import { NewsItem, MediaFile, AdminMessage, ListenerReport } from '../types';
 import { dbService } from './../services/dbService';
 import { CHANNEL_INTRO, DESIGNER_NAME, APP_NAME } from '../constants';
@@ -21,7 +22,9 @@ const ListenerView: React.FC<ListenerViewProps> = ({
   news, 
   sponsoredVideos,
   reports,
-  adminMessages = []
+  adminMessages = [],
+  isRadioPlaying,
+  onStateChange,
 }) => {
   const [location, setLocation] = useState<string>('Syncing...');
   const [localTime, setLocalTime] = useState<string>('');
@@ -29,15 +32,30 @@ const ListenerView: React.FC<ListenerViewProps> = ({
   const [isReporting, setIsReporting] = useState(false);
   const [adIndex, setAdIndex] = useState(0);
   const [shareFeedback, setShareFeedback] = useState('');
-  
+  // TV is always visually on but audio is muted when radio is playing
+  const [tvAudioOn, setTvAudioOn] = useState(false);
+
   const timerRef = useRef<number | null>(null);
 
-  const nextAd = useCallback(() => {
-    const liveVideos = sponsoredVideos.filter(v => v.isLive);
-    const pool = liveVideos.length > 0 ? liveVideos : sponsoredVideos;
-    if (pool.length > 0) {
-      setAdIndex((prev) => (prev + 1) % pool.length);
+  // When radio starts playing, mute TV audio automatically
+  useEffect(() => {
+    if (isRadioPlaying) setTvAudioOn(false);
+  }, [isRadioPlaying]);
+
+  // Listener taps TV sound button
+  const handleTvAudioToggle = () => {
+    if (!tvAudioOn) {
+      // Turn TV audio ON → stop radio first
+      onStateChange(false);
+      setTvAudioOn(true);
+    } else {
+      setTvAudioOn(false);
     }
+  };
+
+  const nextAd = useCallback(() => {
+    const live = sponsoredVideos.filter(v => v.isLive);
+    if (live.length > 0) setAdIndex(prev => (prev + 1) % live.length);
   }, [sponsoredVideos]);
 
   useEffect(() => {
@@ -94,8 +112,10 @@ const ListenerView: React.FC<ListenerViewProps> = ({
     setTimeout(() => setShareFeedback(''), 3000);
   };
 
-  const currentAd = sponsoredVideos.filter(v => v.isLive)[adIndex % Math.max(1, sponsoredVideos.filter(v => v.isLive).length)] 
-    ?? sponsoredVideos[adIndex];
+  const liveVideos = sponsoredVideos.filter(v => v.isLive);
+  // Only show items explicitly pushed live — never fall back to all items
+  const adPool = liveVideos;
+  const currentAd = adPool.length > 0 ? adPool[adIndex % adPool.length] : null;
 
   return (
     <div className="flex flex-col space-y-4 pb-8 px-1 text-[#008751] animate-scale-in">
@@ -139,15 +159,82 @@ const ListenerView: React.FC<ListenerViewProps> = ({
 
       {/* 3. SPONSORED HIGHLIGHTS */}
       <section className="space-y-1">
-        <h3 className="text-[7px] font-black uppercase text-green-600/40 tracking-[0.2em] px-1">Sponsored Highlights</h3>
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-[7px] font-black uppercase text-green-600/40 tracking-[0.2em]">Sponsored Highlights</h3>
+          {currentAd && currentAd.type !== 'image' && (
+            <button
+              onClick={handleTvAudioToggle}
+              className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[6px] font-black uppercase border transition-all ${
+                tvAudioOn
+                  ? 'bg-red-500 text-white border-red-400'
+                  : 'bg-white text-green-700 border-green-200'
+              }`}
+            >
+              <i className={`fas ${tvAudioOn ? 'fa-volume-up' : 'fa-volume-mute'} text-[8px]`}></i>
+              <span>{tvAudioOn ? 'TV Audio On' : 'TV Muted'}</span>
+            </button>
+          )}
+        </div>
         <div className="min-h-[276px] relative">
           {currentAd ? (
-            <div style={{ borderRadius: 0, height: '276px', width: '100%' }} className="overflow-hidden border border-green-100 shadow-md animate-scale-in">
+            <div style={{ borderRadius: 0, height: '276px', width: '100%' }} className="overflow-hidden border border-green-100 shadow-md animate-scale-in relative">
               {currentAd.type === 'image' ? (
                 <img src={currentAd.url} className="w-full h-full object-cover" alt="ad" />
+              ) : currentAd.type === 'iptv' ? (
+                <IptvPlayer
+                  url={currentAd.url}
+                  muted={!tvAudioOn}
+                  autoPlay
+                  className="w-full h-full object-contain"
+                />
+              ) : currentAd.type === 'youtube' ? (
+                <iframe
+                  key={`${currentAd.id}-${tvAudioOn}`}
+                  src={tvAudioOn
+                    ? currentAd.url
+                    : currentAd.url.includes('?')
+                      ? currentAd.url + '&mute=1'
+                      : currentAd.url + '?mute=1'
+                  }
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  title={currentAd.name}
+                />
               ) : (
-                <SponsoredVideo video={currentAd} onEnded={nextAd} />
+                <SponsoredVideo video={currentAd} onEnded={nextAd} isMutedByRadio={!tvAudioOn} />
               )}
+
+              {/* ── LIVE MONITOR TICKER — green bg, white text, Nigerian flag ── */}
+              <div className="absolute bottom-0 inset-x-0 bg-[#008751] flex items-center overflow-hidden" style={{ height: '22px' }}>
+                {/* Nigerian flag */}
+                <div className="shrink-0 flex h-full border-r border-green-600" style={{ width: '28px' }}>
+                  <div className="flex-1 bg-[#008751]"></div>
+                  <div className="flex-1 bg-white"></div>
+                  <div className="flex-1 bg-[#008751]"></div>
+                </div>
+                {/* Scrolling text */}
+                <div className="flex-1 overflow-hidden h-full flex items-center">
+                  <div className="flex whitespace-nowrap animate-tv-ticker items-center">
+                    <span className="text-[7px] font-black text-white uppercase tracking-widest px-4">{APP_NAME} — {CHANNEL_INTRO}</span>
+                    {adminMessages.map((msg, i) => (
+                      <span key={`tv-admin-${i}`} className="text-[7px] text-yellow-300 font-black uppercase px-4 flex items-center">
+                        <i className="fas fa-bullhorn mr-1"></i>{msg.text}
+                        <span className="ml-4 text-green-400">◆</span>
+                      </span>
+                    ))}
+                    {news.map((n, i) => (
+                      <span key={`tv-news-${i}`} className="text-[7px] text-white font-bold uppercase px-4 flex items-center">
+                        <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full mr-2 shrink-0"></span>
+                        {n.title}
+                        <span className="ml-4 text-green-400">◆</span>
+                      </span>
+                    ))}
+                    {/* Duplicate for seamless loop */}
+                    <span className="text-[7px] font-black text-white uppercase tracking-widest px-4">{APP_NAME} — {CHANNEL_INTRO}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <div style={{ borderRadius: 0, height: '276px' }} className="bg-green-50/20 border border-dashed border-green-100 flex flex-col items-center justify-center opacity-40">
@@ -253,6 +340,8 @@ const ListenerView: React.FC<ListenerViewProps> = ({
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
         .animate-marquee { display: inline-flex; animation: marquee 120s linear infinite; }
+        @keyframes tv-ticker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+        .animate-tv-ticker { display: inline-flex; animation: tv-ticker 60s linear infinite; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />
