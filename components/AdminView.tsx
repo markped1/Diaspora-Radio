@@ -2,9 +2,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { dbService } from '../services/dbService';
 import { AdminLog, MediaFile, NewsItem, ListenerReport } from '../types';
+import TvMonitor from './TvMonitor';
 
 interface AdminViewProps {
   onRefreshData: () => void;
+  onRefreshNews: () => Promise<void>;
   logs: AdminLog[];
   onPlayTrack: (track: MediaFile) => void;
   isRadioPlaying: boolean;
@@ -24,7 +26,8 @@ type Tab = 'command' | 'bulletin' | 'media' | 'inbox' | 'logs';
 type MediaSubTab = 'audio' | 'video';
 
 const AdminView: React.FC<AdminViewProps> = ({ 
-  onRefreshData, 
+  onRefreshData,
+  onRefreshNews,
   logs, 
   onPlayTrack, 
   isRadioPlaying, 
@@ -42,6 +45,7 @@ const AdminView: React.FC<AdminViewProps> = ({
   const [activeTab, setActiveTab] = useState<Tab>('command');
   const [mediaSubTab, setMediaSubTab] = useState<MediaSubTab>('audio');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isFetchingNews, setIsFetchingNews] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
   const [mediaList, setMediaList] = useState<MediaFile[]>([]);
   const [reports, setReports] = useState<ListenerReport[]>([]);
@@ -183,16 +187,69 @@ const AdminView: React.FC<AdminViewProps> = ({
 
       {activeTab === 'bulletin' && (
         <div className="space-y-4">
-           <div className="bg-[#008751] p-6 rounded-3xl text-white shadow-lg"><h2 className="text-lg font-black uppercase italic mb-1">News Intelligence</h2><button onClick={onTriggerFullBulletin} className="bg-white text-green-700 px-6 py-2.5 rounded-xl text-[8px] font-black uppercase">Force Ticker Sync</button></div>
-           <div className="space-y-3">
-              {news.map(n => (
-                <div key={n.id} className="bg-white p-4 rounded-2xl border border-green-50 shadow-sm space-y-3 animate-scale-in">
-                   <h4 className="text-[10px] font-black text-green-950">{n.title}</h4>
-                   <p className="text-[9px] text-green-800 font-medium">{n.content}</p>
-                   <button onClick={() => handleManualBroadcast(n)} className="w-full bg-green-50 text-green-700 py-2 rounded-lg text-[7px] font-black uppercase flex items-center justify-center"><i className="fas fa-volume-up mr-2"></i> Voice Broadcast Story</button>
+          {/* Header bar */}
+          <div className="bg-[#008751] p-4 rounded-2xl text-white shadow-lg flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-black uppercase italic">Newsroom</h2>
+              <p className="text-[7px] opacity-70 uppercase tracking-widest mt-0.5">{news.length} stories loaded</p>
+            </div>
+            <div className="flex flex-col space-y-1.5 items-end">
+              <button
+                onClick={async () => { setIsFetchingNews(true); await onRefreshNews(); setIsFetchingNews(false); }}
+                disabled={isFetchingNews}
+                className="bg-white text-green-700 px-3 py-1.5 rounded-lg text-[7px] font-black uppercase flex items-center space-x-1 disabled:opacity-50"
+              >
+                <i className={`fas fa-sync-alt text-[8px] ${isFetchingNews ? 'animate-spin' : ''}`}></i>
+                <span>{isFetchingNews ? 'Fetching...' : 'Fetch News'}</span>
+              </button>
+              <button
+                onClick={async () => { setIsProcessing(true); setStatusMsg('Broadcasting full bulletin...'); await onTriggerFullBulletin?.(); setIsProcessing(false); setStatusMsg('Bulletin complete.'); setTimeout(() => setStatusMsg(''), 3000); }}
+                disabled={isProcessing || news.length === 0}
+                className="bg-amber-400 text-amber-900 px-3 py-1.5 rounded-lg text-[7px] font-black uppercase flex items-center space-x-1 disabled:opacity-50"
+              >
+                <i className="fas fa-broadcast-tower text-[8px]"></i>
+                <span>Broadcast Now</span>
+              </button>
+            </div>
+          </div>
+
+          {/* News list */}
+          {news.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-dashed border-green-200 p-10 flex flex-col items-center justify-center text-center space-y-3">
+              <i className="fas fa-newspaper text-3xl text-green-200"></i>
+              <p className="text-[8px] font-black uppercase text-green-400 tracking-widest">No news loaded yet</p>
+              <p className="text-[7px] text-green-300">Tap "Fetch News" to pull latest stories</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {news.map((n, idx) => (
+                <div key={n.id} className="bg-white p-3 rounded-xl border border-green-50 shadow-sm space-y-2 animate-scale-in">
+                  <div className="flex items-start justify-between space-x-2">
+                    <div className="flex items-center space-x-1.5 shrink-0">
+                      <span className={`text-[5px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest ${
+                        n.category === 'Nigeria'  ? 'bg-green-100 text-green-700' :
+                        n.category === 'Diaspora' ? 'bg-blue-100 text-blue-700'  :
+                        n.category === 'Sports'   ? 'bg-orange-100 text-orange-700' :
+                        n.category === 'Economy'  ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>{n.category}</span>
+                      <span className="text-[5px] text-gray-300 font-mono">#{idx + 1}</span>
+                    </div>
+                    <button
+                      onClick={() => handleManualBroadcast(n)}
+                      className="shrink-0 w-6 h-6 bg-green-50 text-green-600 rounded-full flex items-center justify-center hover:bg-green-100"
+                      title="Voice broadcast this story"
+                    >
+                      <i className="fas fa-volume-up text-[7px]"></i>
+                    </button>
+                  </div>
+                  <h4 className="text-[9px] font-black text-green-950 leading-tight">{n.title}</h4>
+                  <p className="text-[8px] text-green-700 leading-relaxed">{n.content}</p>
+                  <p className="text-[6px] text-gray-300 font-mono">{new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {(n as any).sources?.[0] || 'NDR'}</p>
                 </div>
               ))}
-           </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -200,25 +257,38 @@ const AdminView: React.FC<AdminViewProps> = ({
         <div className="space-y-4">
           <div className="flex bg-[#008751]/5 p-1 rounded-xl border border-green-100">
              <button onClick={() => setMediaSubTab('audio')} className={`flex-1 py-2 text-[8px] font-black uppercase rounded-lg ${mediaSubTab === 'audio' ? 'bg-white text-[#008751] shadow-sm' : 'text-green-600/60'}`}>Tracks</button>
-             <button onClick={() => setMediaSubTab('video')} className={`flex-1 py-2 text-[8px] font-black uppercase rounded-lg ${mediaSubTab === 'video' ? 'bg-white text-[#008751] shadow-sm' : 'text-green-600/60'}`}>Ads</button>
+             <button onClick={() => setMediaSubTab('video')} className={`flex-1 py-2 text-[8px] font-black uppercase rounded-lg ${mediaSubTab === 'video' ? 'bg-white text-[#008751] shadow-sm' : 'text-green-600/60'}`}>TV Studio</button>
           </div>
+
           {mediaSubTab === 'video' && (
-            <button onClick={() => triggerUpload('video/*,image/*')} className="w-full bg-blue-600 text-white py-4 rounded-2xl flex flex-col items-center justify-center shadow-lg active:scale-95 transition-all"><i className="fas fa-cloud-upload-alt text-xl mb-1"></i><span className="text-[10px] font-black uppercase tracking-widest">Upload New Ad Content</span></button>
+            <div className="space-y-3">
+              <button
+                onClick={() => triggerUpload('video/*,image/*')}
+                className="w-full bg-blue-600 text-white py-3 rounded-2xl flex items-center justify-center space-x-2 shadow-lg active:scale-95 transition-all"
+              >
+                <i className="fas fa-cloud-upload-alt"></i>
+                <span className="text-[10px] font-black uppercase tracking-widest">Upload Video / Image</span>
+              </button>
+              <TvMonitor mediaList={mediaList} onMediaUpdated={async () => { await loadData(); onRefreshData(); }} />
+            </div>
           )}
-          <div className="grid gap-2">
-            {filteredMedia.map(item => (
-              <div key={item.id} className="bg-white p-3 rounded-xl border border-green-50 flex items-center justify-between shadow-sm animate-scale-in">
-                <div className="flex items-center space-x-3 truncate pr-4">
-                  <i className={`fas ${item.type === 'audio' ? 'fa-music' : 'fa-film'} text-xs text-green-600`}></i>
-                  <p className="text-[9px] font-bold text-green-950 truncate">{item.name}</p>
+
+          {mediaSubTab === 'audio' && (
+            <div className="grid gap-2">
+              {filteredMedia.map(item => (
+                <div key={item.id} className="bg-white p-3 rounded-xl border border-green-50 flex items-center justify-between shadow-sm animate-scale-in">
+                  <div className="flex items-center space-x-3 truncate pr-4">
+                    <i className="fas fa-music text-xs text-green-600"></i>
+                    <p className="text-[9px] font-bold text-green-950 truncate">{item.name}</p>
+                  </div>
+                  <div className="flex space-x-1">
+                     <button onClick={() => onPlayTrack(item)} className="w-7 h-7 bg-green-50 text-green-600 rounded-full flex items-center justify-center"><i className="fas fa-play text-[8px]"></i></button>
+                     <button onClick={() => dbService.deleteMedia(item.id).then(loadData)} className="w-7 h-7 bg-red-50 text-red-500 rounded-full flex items-center justify-center"><i className="fas fa-trash-alt text-[8px]"></i></button>
+                  </div>
                 </div>
-                <div className="flex space-x-1">
-                   <button onClick={() => onPlayTrack(item)} className="w-7 h-7 bg-green-50 text-green-600 rounded-full flex items-center justify-center"><i className="fas fa-play text-[8px]"></i></button>
-                   <button onClick={() => dbService.deleteMedia(item.id).then(loadData)} className="w-7 h-7 bg-red-50 text-red-500 rounded-full flex items-center justify-center"><i className="fas fa-trash-alt text-[8px]"></i></button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
       

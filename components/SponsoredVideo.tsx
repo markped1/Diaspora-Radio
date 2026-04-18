@@ -26,7 +26,7 @@ const SponsoredVideo: React.FC<SponsoredVideoProps> = ({ video, onEnded }) => {
   };
 
   return (
-    <div className="rounded-2xl overflow-hidden group shadow-lg border border-green-100/30 w-full h-full bg-black relative flex items-center justify-center">
+    <div style={{ borderRadius: 0 }} className="overflow-hidden group shadow-lg border border-green-100/30 w-full h-full bg-black relative flex items-center justify-center">
       {/* Video with object-contain to ensure it fits the frame perfectly without cropping */}
       {/* Removed loop to allow onEnded to fire after one full playback */}
       <video 

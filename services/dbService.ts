@@ -119,6 +119,17 @@ class DBService {
     });
   }
 
+  async updateMedia(file: MediaFile): Promise<void> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(MEDIA_STORE, 'readwrite');
+      const store = transaction.objectStore(MEDIA_STORE);
+      const request = store.put(file);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   async deleteMedia(id: string): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {

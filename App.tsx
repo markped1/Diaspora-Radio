@@ -6,7 +6,7 @@ import PasswordModal from './components/PasswordModal';
 import RadioPlayer from './components/RadioPlayer';
 import { dbService } from './services/dbService';
 import { scanNigerianNewspapers } from './services/newsAIService';
-import { getDetailedBulletinAudio, getNewsAudio, getJingleAudio } from './services/aiDjService';
+import { getDetailedBulletinAudio, getNewsAudio, getJingleAudio, registerSpeechCallbacks } from './services/aiDjService';
 import { UserRole, MediaFile, AdminMessage, AdminLog, NewsItem, ListenerReport } from './types';
 import { DESIGNER_NAME, APP_NAME, JINGLE_1, JINGLE_2 } from './constants';
 
@@ -19,23 +19,36 @@ const App: React.FC = () => {
   const [audioPlaylist, setAudioPlaylist] = useState<MediaFile[]>([]);
   const [adminMessages, setAdminMessages] = useState<AdminMessage[]>([]);
   const [reports, setReports] = useState<ListenerReport[]>([]);
-  
+
   const [isRadioPlaying, setIsRadioPlaying] = useState(false);
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [activeTrackUrl, setActiveTrackUrl] = useState<string | null>(null);
-  const [currentTrackName, setCurrentTrackName] = useState<string>('Live Stream');
+  const [currentTrackName, setCurrentTrackName] = useState<string>('');
   const [isShuffle, setIsShuffle] = useState(true);
   const [isDucking, setIsDucking] = useState(false);
+  const [musicVolumeOverride, setMusicVolumeOverride] = useState<number | null>(null);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<string>("Global");
 
-  const aiAudioContextRef = useRef<AudioContext | null>(null);
   const isSyncingRef = useRef(false);
-  const pendingAudioRef = useRef<Uint8Array | null>(null);
-  const lastBroadcastMarkerRef = useRef<string>(""); 
-  
+  const lastBroadcastMarkerRef = useRef<string>("");
+  const wasPlayingBeforeBroadcastRef = useRef(false);
+
   const mediaUrlCache = useRef<Map<string, string>>(new Map());
   const playlistRef = useRef<MediaFile[]>([]);
+
+  // Register Web Speech ducking callbacks once on mount
+  useEffect(() => {
+    registerSpeechCallbacks(
+      () => setIsDucking(true),
+      () => setIsDucking(false),
+      (vol: number) => setMusicVolumeOverride(vol),   // duck to specific level
+      () => { wasPlayingBeforeBroadcastRef.current = isRadioPlaying; setIsRadioPlaying(false); }, // stop music
+      () => { setMusicVolumeOverride(null); }          // restore volume (music resumes after outro jingle)
+    );
+    setIsDucking(false);
+    setMusicVolumeOverride(null);
+  }, [isRadioPlaying]);
 
   useEffect(() => {
     playlistRef.current = audioPlaylist;
@@ -87,90 +100,89 @@ const App: React.FC = () => {
     }
   }, [activeTrackId]);
 
-  const playRawPcm = useCallback(async (pcmData: Uint8Array, type: 'news' | 'jingle' = 'news'): Promise<void> => {
-    if (!pcmData || pcmData.byteLength < 100) return Promise.resolve();
-    
-    if (!hasInteracted) {
-      pendingAudioRef.current = pcmData;
-      return Promise.resolve();
-    }
-
-    return new Promise((resolve) => {
-      try {
-        if (!aiAudioContextRef.current || aiAudioContextRef.current.state === 'closed') {
-          aiAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-        }
-        const ctx = aiAudioContextRef.current;
-        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-
-        setIsDucking(true);
-        const alignedBuffer = pcmData.buffer.slice(pcmData.byteOffset, pcmData.byteOffset + pcmData.byteLength);
-        const dataInt16 = new Int16Array(alignedBuffer);
-        const buffer = ctx.createBuffer(1, dataInt16.length, 24000);
-        const channelData = buffer.getChannelData(0);
-        for (let i = 0; i < dataInt16.length; i++) {
-          channelData[i] = dataInt16[i] / 32768.0;
-        }
-        
-        const source = ctx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(ctx.destination);
-        source.onended = () => {
-          setIsDucking(false);
-          resolve();
-        };
-        source.start();
-      } catch (err) {
-        console.error("AI Audio Playback Error:", err);
-        setIsDucking(false);
-        resolve();
+  // Fetch fresh news from RSS and dump into newsroom + state
+  const refreshNews = useCallback(async () => {
+    try {
+      // Clear lastSync so quota guard doesn't block a manual refresh
+      localStorage.removeItem('ndn_radio_last_sync');
+      const { news: freshNews } = await scanNigerianNewspapers(currentLocation);
+      if (freshNews.length > 0) {
+        setNews(freshNews);
+        console.log(`📰 Newsroom updated: ${freshNews.length} articles`);
+      } else {
+        console.warn('⚠️ No articles returned from news fetch');
       }
-    });
-  }, [hasInteracted]);
+    } catch (err) {
+      console.error('News refresh failed:', err);
+    }
+  }, [currentLocation]);
+
+  // Web Speech API speaks directly inside aiDjService — this wrapper exists
+  // only so the rest of the call sites (runScheduledBroadcast, handlePushBroadcast)
+  // don't need to change. The Uint8Array returned is a sentinel (1 byte) meaning
+  // "speech already happened", so we just resolve immediately.
+  const playRawPcm = useCallback(async (_pcmData: Uint8Array): Promise<void> => {
+    // Speech was already played by webSpeechSpeak inside the service call.
+    // Nothing to do here.
+    return Promise.resolve();
+  }, []);
 
   const runScheduledBroadcast = useCallback(async (isBrief: boolean) => {
     if (isSyncingRef.current) return;
     isSyncingRef.current = true;
     try {
       console.log(`Starting ${isBrief ? 'Headline' : 'Detailed'} News & Weather Broadcast...`);
-      
-      // Step 1: Fetch fresh data (News + Weather)
+
+      // Step 1: Fetch fresh news + weather, dump into newsroom
       const { news: freshNews, weather } = await scanNigerianNewspapers(currentLocation);
+      if (freshNews.length > 0) setNews(freshNews);
       await fetchData();
 
-      if (freshNews.length > 0) {
-        // Step 2: Play Intro Jingle
-        const intro = await getJingleAudio(JINGLE_1);
-        if (intro) await playRawPcm(intro, 'jingle');
+      const broadcastNews = freshNews.length > 0 ? freshNews : news;
 
-        // Step 3: Generate and Play AI Audio
-        const audioData = await getDetailedBulletinAudio({
+      if (broadcastNews.length > 0) {
+        // Remember if music was playing before broadcast
+        wasPlayingBeforeBroadcastRef.current = isRadioPlaying;
+
+        // Step 2: Intro jingle (music ducked to 30%)
+        setMusicVolumeOverride(0.30);
+        setIsDucking(true);
+        await getJingleAudio(JINGLE_1);
+
+        // Step 3: Read bulletin (service handles duck/stop internally)
+        await getDetailedBulletinAudio({
           location: currentLocation,
           localTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          newsItems: freshNews.slice(0, 5),
-          weather: weather,
-          isBrief: isBrief
+          newsItems: broadcastNews.slice(0, isBrief ? 5 : 8),
+          weather,
+          isBrief,
         });
-        
-        if (audioData) {
-          await playRawPcm(audioData, 'news');
-          dbService.addLog({
-            id: Date.now().toString(),
-            action: `${isBrief ? 'Headline' : 'Detailed'} Broadcast triggered at ${new Date().toLocaleTimeString()}`,
-            timestamp: Date.now()
-          });
-        }
 
-        // Step 4: Play Outro Jingle
-        const outro = await getJingleAudio(JINGLE_2);
-        if (outro) await playRawPcm(outro, 'jingle');
+        dbService.addLog({
+          id: Date.now().toString(),
+          action: `${isBrief ? 'Headline' : 'Detailed'} Broadcast — ${broadcastNews.length} stories at ${new Date().toLocaleTimeString()}`,
+          timestamp: Date.now()
+        });
+
+        // Step 4: Outro jingle (music still off)
+        await getJingleAudio(JINGLE_2);
+
+        // Step 5: Restore music volume and resume if it was playing before
+        setMusicVolumeOverride(null);
+        setIsDucking(false);
+        if (wasPlayingBeforeBroadcastRef.current) {
+          setIsRadioPlaying(true);
+        }
       }
     } catch (err) {
       console.error("Scheduled broadcast failed", err);
+      // Always restore music on error
+      setMusicVolumeOverride(null);
+      setIsDucking(false);
     } finally {
       isSyncingRef.current = false;
     }
-  }, [currentLocation, fetchData, playRawPcm]);
+  }, [currentLocation, fetchData, news, isRadioPlaying]);
 
   // Precise Heartbeat Scheduler
   useEffect(() => {
@@ -183,7 +195,7 @@ const App: React.FC = () => {
       if (currentMinute === 0 && lastBroadcastMarkerRef.current !== timeTag) {
         lastBroadcastMarkerRef.current = timeTag;
         runScheduledBroadcast(false);
-      } 
+      }
       // :30 = Headline News & Weather
       else if (currentMinute === 30 && lastBroadcastMarkerRef.current !== timeTag) {
         lastBroadcastMarkerRef.current = timeTag;
@@ -195,36 +207,24 @@ const App: React.FC = () => {
   }, [runScheduledBroadcast]);
 
   useEffect(() => {
-    if (hasInteracted && pendingAudioRef.current) {
-      const audio = pendingAudioRef.current;
-      pendingAudioRef.current = null;
-      playRawPcm(audio, 'news');
-    }
-  }, [hasInteracted, playRawPcm]);
-
-  useEffect(() => {
     fetchData();
-    // Silent initial sync
-    const syncTimeout = setTimeout(() => scanNigerianNewspapers(currentLocation).then(() => fetchData()), 3000);
-    
-    const interactionHandler = () => {
-      setHasInteracted(true);
-      if (aiAudioContextRef.current) aiAudioContextRef.current.resume();
-    };
+    // Fetch news immediately on startup and dump into newsroom
+    refreshNews();
+
+    const interactionHandler = () => setHasInteracted(true);
     window.addEventListener('click', interactionHandler, { once: true });
-    return () => { 
-      clearTimeout(syncTimeout);
+    return () => {
       window.removeEventListener('click', interactionHandler);
     };
-  }, [fetchData, currentLocation]);
+  }, [fetchData, refreshNews]);
 
   const handlePlayNext = useCallback(() => {
     const list = playlistRef.current;
     if (list.length === 0) {
-       setActiveTrackId(null);
-       setActiveTrackUrl(null);
-       setCurrentTrackName('Live Stream');
-       return;
+      setActiveTrackId(null);
+      setActiveTrackUrl(null);
+      setCurrentTrackName('');
+      return;
     }
     const currentIndex = list.findIndex(t => t.id === activeTrackId);
     let nextIndex = isShuffle ? Math.floor(Math.random() * list.length) : (currentIndex + 1) % list.length;
@@ -277,8 +277,8 @@ const App: React.FC = () => {
           <p className="text-[6px] text-green-950/60 font-black uppercase mt-0.5 tracking-widest">Designed by {DESIGNER_NAME}</p>
         </div>
         <div className="flex items-center space-x-2">
-           {isDucking && <span className="text-[7px] font-black uppercase text-red-500 animate-pulse bg-red-50 px-1 rounded shadow-sm border border-red-100">Live Broadcast</span>}
-           <button 
+          {isDucking && <span className="text-[7px] font-black uppercase text-red-500 animate-pulse bg-red-50 px-1 rounded shadow-sm border border-red-100">Live Broadcast</span>}
+          <button
             onClick={role === UserRole.ADMIN ? () => setRole(UserRole.LISTENER) : () => setShowAuth(true)}
             className="px-2 py-0.5 rounded-full border border-green-950 text-[7px] font-black uppercase text-green-950 hover:bg-green-50 transition-colors"
           >
@@ -288,30 +288,32 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-grow pt-1 px-1.5">
-        <RadioPlayer 
-          onStateChange={setIsRadioPlaying} 
-          activeTrackUrl={activeTrackUrl} 
+        <RadioPlayer
+          onStateChange={setIsRadioPlaying}
+          activeTrackUrl={activeTrackUrl}
           currentTrackName={currentTrackName}
           forcePlaying={isRadioPlaying}
           onTrackEnded={handlePlayNext}
           isDucking={isDucking}
+          musicVolumeOverride={musicVolumeOverride}
         />
 
         {role === UserRole.LISTENER ? (
-          <ListenerView 
+          <ListenerView
             news={news} onStateChange={setIsRadioPlaying} isRadioPlaying={isRadioPlaying}
-            sponsoredVideos={sponsoredMedia} activeTrackUrl={activeTrackUrl} 
+            sponsoredVideos={sponsoredMedia} activeTrackUrl={activeTrackUrl}
             currentTrackName={currentTrackName} adminMessages={adminMessages} reports={reports}
             onPlayTrack={(t) => { setHasInteracted(true); setActiveTrackId(t.id); setActiveTrackUrl(t.url); setCurrentTrackName(cleanTrackName(t.name)); setIsRadioPlaying(true); }}
           />
         ) : (
-          <AdminView 
+          <AdminView
             onRefreshData={fetchData} logs={logs} onPlayTrack={(t) => { setHasInteracted(true); setActiveTrackId(t.id); setActiveTrackUrl(t.url); setCurrentTrackName(cleanTrackName(t.name)); setIsRadioPlaying(true); }}
             isRadioPlaying={isRadioPlaying} onToggleRadio={() => setIsRadioPlaying(!isRadioPlaying)}
             currentTrackName={currentTrackName} isShuffle={isShuffle} onToggleShuffle={() => setIsShuffle(!isShuffle)}
             onPlayAll={handlePlayAll} onSkipNext={handlePlayNext}
             onPushBroadcast={handlePushBroadcast} onPlayJingle={handlePlayJingle}
             news={news} onTriggerFullBulletin={() => runScheduledBroadcast(false)}
+            onRefreshNews={refreshNews}
           />
         )}
       </main>

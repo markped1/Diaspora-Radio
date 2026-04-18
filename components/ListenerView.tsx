@@ -33,10 +33,12 @@ const ListenerView: React.FC<ListenerViewProps> = ({
   const timerRef = useRef<number | null>(null);
 
   const nextAd = useCallback(() => {
-    if (sponsoredVideos.length > 0) {
-      setAdIndex((prev) => (prev + 1) % sponsoredVideos.length);
+    const liveVideos = sponsoredVideos.filter(v => v.isLive);
+    const pool = liveVideos.length > 0 ? liveVideos : sponsoredVideos;
+    if (pool.length > 0) {
+      setAdIndex((prev) => (prev + 1) % pool.length);
     }
-  }, [sponsoredVideos.length]);
+  }, [sponsoredVideos]);
 
   useEffect(() => {
     if (sponsoredVideos.length > 0) {
@@ -92,7 +94,8 @@ const ListenerView: React.FC<ListenerViewProps> = ({
     setTimeout(() => setShareFeedback(''), 3000);
   };
 
-  const currentAd = sponsoredVideos[adIndex];
+  const currentAd = sponsoredVideos.filter(v => v.isLive)[adIndex % Math.max(1, sponsoredVideos.filter(v => v.isLive).length)] 
+    ?? sponsoredVideos[adIndex];
 
   return (
     <div className="flex flex-col space-y-4 pb-8 px-1 text-[#008751] animate-scale-in">
@@ -126,7 +129,6 @@ const ListenerView: React.FC<ListenerViewProps> = ({
           {news.map((n, i) => (
             <span key={`ticker-${i}`} className="text-[8px] text-green-800 font-bold uppercase px-8 flex items-center inline-block">
               <span className="w-1.5 h-1.5 bg-red-500 rounded-full mr-2 shrink-0 animate-pulse"></span>
-              <span className="text-[#008751] font-black mr-2">BREAKING:</span> 
               {n.title}
               <span className="ml-8 text-green-300">|</span>
             </span>
@@ -138,9 +140,9 @@ const ListenerView: React.FC<ListenerViewProps> = ({
       {/* 3. SPONSORED HIGHLIGHTS */}
       <section className="space-y-1">
         <h3 className="text-[7px] font-black uppercase text-green-600/40 tracking-[0.2em] px-1">Sponsored Highlights</h3>
-        <div className="min-h-[180px] relative">
+        <div className="min-h-[276px] relative">
           {currentAd ? (
-            <div className="rounded-2xl overflow-hidden border border-green-100 h-[180px] shadow-md animate-scale-in">
+            <div style={{ borderRadius: 0, height: '276px', width: '100%' }} className="overflow-hidden border border-green-100 shadow-md animate-scale-in">
               {currentAd.type === 'image' ? (
                 <img src={currentAd.url} className="w-full h-full object-cover" alt="ad" />
               ) : (
@@ -148,7 +150,7 @@ const ListenerView: React.FC<ListenerViewProps> = ({
               )}
             </div>
           ) : (
-            <div className="bg-green-50/20 h-[150px] rounded-2xl border border-dashed border-green-100 flex flex-col items-center justify-center opacity-40">
+            <div style={{ borderRadius: 0, height: '276px' }} className="bg-green-50/20 border border-dashed border-green-100 flex flex-col items-center justify-center opacity-40">
               <i className="fas fa-signal mb-2 text-green-600"></i>
               <span className="text-[6px] font-black uppercase tracking-widest">Awaiting Sponsor Signal</span>
             </div>
@@ -250,7 +252,7 @@ const ListenerView: React.FC<ListenerViewProps> = ({
 
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .animate-marquee { display: inline-flex; animation: marquee 50s linear infinite; }
+        .animate-marquee { display: inline-flex; animation: marquee 120s linear infinite; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />

@@ -18,6 +18,9 @@ export interface MediaFile {
   type: 'audio' | 'video' | 'image';
   timestamp: number;
   likes?: number;
+  isLive?: boolean;       // Whether this video is pushed to listener screen
+  caption?: string;       // Optional caption shown on listener screen
+  sponsorName?: string;   // Sponsor label shown on listener screen
 }
 
 export interface AdminMessage {
