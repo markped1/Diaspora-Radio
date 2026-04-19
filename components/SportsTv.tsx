@@ -16,6 +16,28 @@ import {
   getCurrentProxyName, findWorkingProxy,
 } from '../services/proxyService';
 
+// Detect if running inside Capacitor (Android/iOS app)
+const isCapacitor = typeof (window as any).Capacitor !== 'undefined';
+
+// Native in-app browser — uses Chrome Custom Tabs on Android (most reliable)
+async function openInAppBrowser(url: string): Promise<void> {
+  try {
+    const { InAppBrowser } = await import('@capgo/inappbrowser');
+    // Use open() with activity toolbar — Chrome Custom Tabs on Android
+    // This is the most reliable method, stays within app context
+    await InAppBrowser.open({
+      url,
+      toolbarColor: '#008751',
+      toolbarTextColor: '#ffffff',
+      showArrow: false,
+      showReloadButton: true,
+    });
+  } catch (e) {
+    console.error('InAppBrowser failed:', e);
+    window.open(url, '_blank');
+  }
+}
+
 interface SportsTvProps {
   onPushLive: (channel: SportChannel) => void;
 }
@@ -56,15 +78,24 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
     dbService.getSportChannels().then(setSavedMatches);
   }, []);
 
-  // Load a URL through the proxy pool
+  // Load a URL — native browser on Android, proxy iframe on PC
   const loadUrl = useCallback(async (url: string) => {
+    if (isCapacitor) {
+      // On Android: open in native in-app WebView — stays inside app, streams play
+      setIsLoading(false);
+      setLoadError(false);
+      setIframeSrc('');
+      await openInAppBrowser(url);
+      return;
+    }
+
+    // On PC: use proxy iframe
     setIsLoading(true);
     setLoadError(false);
     setRetrying(false);
     setLoadStatus('Finding best proxy...');
     retryCountRef.current = 0;
 
-    // Revoke previous blob URL to free memory
     if (blobUrlRef.current.startsWith('blob:')) {
       URL.revokeObjectURL(blobUrlRef.current);
     }
@@ -268,55 +299,71 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
           ))}
         </div>
 
-        {/* Viewport */}
+        {/* Viewport — Android: native browser button | PC: proxy iframe */}
         <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
 
-          {/* Loading overlay */}
-          {(isLoading || retrying) && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10 space-y-2">
-              <i className="fas fa-circle-notch fa-spin text-green-400 text-xl"></i>
-              <span className="text-[7px] text-gray-300 font-black uppercase">
-                {loadStatus || (retrying ? `Trying proxy ${getCurrentProxyName()}...` : 'Loading...')}
-              </span>
-              <span className="text-[6px] text-gray-500">via {proxyName || '...'}</span>
-            </div>
-          )}
-
-          {/* Error state */}
-          {loadError && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 space-y-3 p-4 z-10">
-              <i className="fas fa-exclamation-triangle text-yellow-400 text-2xl"></i>
-              <p className="text-[8px] font-black text-white uppercase text-center">All proxies failed for this site</p>
-              <p className="text-[6px] text-gray-400 text-center leading-relaxed">
-                This site has extra protection against all proxies. Try a different bookmark or open in a new tab.
+          {isCapacitor ? (
+            /* ── ANDROID: tap to open in native WebView — streams play fully ── */
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 space-y-4 p-4">
+              <span className="text-5xl">⚽</span>
+              <p className="text-[9px] font-black text-white uppercase text-center">
+                {targetUrl.replace('https://', '')}
               </p>
-              <div className="flex space-x-2">
-                <button onClick={refresh}
-                  className="bg-green-600 text-white px-3 py-2 rounded-lg text-[7px] font-black uppercase">
-                  Retry
-                </button>
-                <button onClick={() => window.open(targetUrl, '_blank')}
-                  className="bg-yellow-500 text-black px-3 py-2 rounded-lg text-[7px] font-black uppercase">
-                  Open in Tab
-                </button>
-              </div>
+              <button
+                onClick={() => openInAppBrowser(targetUrl)}
+                className="bg-green-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center space-x-2 shadow-lg active:scale-95">
+                <i className="fas fa-play text-sm"></i>
+                <span>Watch Inside App</span>
+              </button>
+              <p className="text-[6px] text-gray-500 text-center">
+                Opens in full-screen in-app browser — all streams play
+              </p>
             </div>
-          )}
+          ) : (
+            /* ── PC: proxy iframe ── */
+            <>
+              {/* Loading overlay */}
+              {(isLoading || retrying) && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10 space-y-2">
+                  <i className="fas fa-circle-notch fa-spin text-green-400 text-xl"></i>
+                  <span className="text-[7px] text-gray-300 font-black uppercase">
+                    {loadStatus || (retrying ? `Trying proxy ${getCurrentProxyName()}...` : 'Loading...')}
+                  </span>
+                  <span className="text-[6px] text-gray-500">via {proxyName || '...'}</span>
+                </div>
+              )}
 
-          {/* iframe */}
-          {iframeSrc && !loadError && (
-            <iframe
-              ref={iframeRef}
-              key={iframeSrc}
-              src={iframeSrc}
-              className="w-full h-full border-0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-              allowFullScreen
-              title="Football Browser"
-              onLoad={handleIframeLoad}
-              onError={handleError}
-              sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
-            />
+              {/* Error state */}
+              {loadError && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 space-y-3 p-4 z-10">
+                  <i className="fas fa-exclamation-triangle text-yellow-400 text-2xl"></i>
+                  <p className="text-[8px] font-black text-white uppercase text-center">Proxy failed for this site</p>
+                  <p className="text-[6px] text-gray-400 text-center leading-relaxed">
+                    Install the Android APK for full stream support. On PC, open in a new tab.
+                  </p>
+                  <div className="flex space-x-2">
+                    <button onClick={refresh} className="bg-green-600 text-white px-3 py-2 rounded-lg text-[7px] font-black uppercase">Retry</button>
+                    <button onClick={() => window.open(targetUrl, '_blank')} className="bg-yellow-500 text-black px-3 py-2 rounded-lg text-[7px] font-black uppercase">Open in Tab</button>
+                  </div>
+                </div>
+              )}
+
+              {/* iframe */}
+              {iframeSrc && !loadError && (
+                <iframe
+                  ref={iframeRef}
+                  key={iframeSrc}
+                  src={iframeSrc}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                  allowFullScreen
+                  title="Football Browser"
+                  onLoad={handleIframeLoad}
+                  onError={handleError}
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+                />
+              )}
+            </>
           )}
         </div>
 

@@ -1,160 +1,153 @@
 /**
- * Auto-rotating CORS proxy service
+ * Auto-rotating proxy service for NDR Sports Browser
  *
- * Fetches pages through free CORS proxies, rewrites relative URLs to absolute,
- * then loads the result as a blob URL in the iframe so assets load correctly.
+ * Priority order:
+ * 1. Cloudflare Worker (VITE_PROXY_URL) — best, deploy free in 2 min
+ * 2. codetabs — free, works for most sites
+ * 3. cors.sh — free backup
+ * 4. corsfix — free backup
+ *
+ * The Cloudflare Worker is a TRUE reverse proxy — it fetches the full page
+ * server-side and strips X-Frame-Options, so JavaScript works correctly.
+ * Free tier: 100,000 requests/day, no credit card needed.
+ *
+ * Deploy: https://workers.cloudflare.com
+ * See proxy-server/cloudflare-worker.js for the worker code.
  */
 
-const PROXY_POOL = [
-  (t: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(t)}`,
-  (t: string) => `https://cors.sh/?${encodeURIComponent(t)}`,
-  (t: string) => `https://corsfix.com/?${encodeURIComponent(t)}`,
-  (t: string) => `https://corsproxy.io/?${encodeURIComponent(t)}`,
+const CF_WORKER = import.meta.env.VITE_PROXY_URL || '';
+
+// Proxy builders — each returns a URL that fetches the target through a proxy
+const PROXY_POOL: Array<{ name: string; build: (t: string) => string }> = [
+  // Cloudflare Worker (best — true reverse proxy, JS works)
+  ...(CF_WORKER ? [{ name: 'Cloudflare', build: (t: string) => `${CF_WORKER}?url=${encodeURIComponent(t)}` }] : []),
+  // Free public proxies (fetch HTML only — JS-heavy sites may show blank)
+  { name: 'codetabs',    build: (t: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(t)}` },
+  { name: 'cors.sh',     build: (t: string) => `https://cors.sh/?${encodeURIComponent(t)}` },
+  { name: 'corsfix',     build: (t: string) => `https://corsfix.com/?${encodeURIComponent(t)}` },
 ];
 
-const PROXY_NAMES = ['codetabs', 'cors.sh', 'corsfix', 'corsproxy.io'];
-
 let currentIndex = 0;
-let failCounts = [0, 0, 0, 0];
+const failCounts = new Array(PROXY_POOL.length).fill(0);
 
 export function getCurrentProxyName(): string {
-  const isCapacitor = typeof (window as any).Capacitor !== 'undefined';
-  if (isCapacitor) return 'Direct';
-  return PROXY_NAMES[currentIndex % PROXY_POOL.length];
+  if (typeof (window as any).Capacitor !== 'undefined') return 'Direct (Mobile)';
+  return PROXY_POOL[currentIndex % PROXY_POOL.length]?.name || '?';
 }
 
 export function markProxyFailed(): void {
-  failCounts[currentIndex]++;
-  if (failCounts[currentIndex] >= 2) {
+  const idx = currentIndex % PROXY_POOL.length;
+  failCounts[idx]++;
+  if (failCounts[idx] >= 2) {
     currentIndex = (currentIndex + 1) % PROXY_POOL.length;
     console.warn(`Rotated to proxy: ${getCurrentProxyName()}`);
   }
 }
 
 export function markProxySuccess(): void {
-  failCounts[currentIndex] = 0;
+  failCounts[currentIndex % PROXY_POOL.length] = 0;
 }
 
 export function getProxiedUrl(targetUrl: string): string {
-  const isCapacitor = typeof (window as any).Capacitor !== 'undefined';
-  if (isCapacitor) return targetUrl;
-  return PROXY_POOL[currentIndex % PROXY_POOL.length](targetUrl);
+  if (typeof (window as any).Capacitor !== 'undefined') return targetUrl;
+  return PROXY_POOL[currentIndex % PROXY_POOL.length].build(targetUrl);
 }
 
 /**
- * Rewrites relative URLs in HTML to absolute so assets load through the proxy.
- */
-function rewriteUrls(html: string, baseUrl: string): string {
-  const base = new URL(baseUrl);
-  const origin = base.origin;
-  const basePath = base.href.substring(0, base.href.lastIndexOf('/') + 1);
-
-  return html
-    // Fix href and src attributes
-    .replace(/(href|src|action)=["'](?!https?:\/\/|\/\/|#|data:|javascript:)([^"']*?)["']/gi,
-      (match, attr, path) => {
-        if (!path) return match;
-        const abs = path.startsWith('/') ? `${origin}${path}` : `${basePath}${path}`;
-        return `${attr}="${abs}"`;
-      })
-    // Fix CSS url() references
-    .replace(/url\(['"]?(?!https?:\/\/|\/\/|data:)([^'")]+)['"]?\)/gi,
-      (match, path) => {
-        const abs = path.startsWith('/') ? `${origin}${path}` : `${basePath}${path}`;
-        return `url("${abs}")`;
-      })
-    // Add base tag to help browser resolve remaining relative URLs
-    .replace(/<head([^>]*)>/i, `<head$1><base href="${origin}/">`);
-}
-
-/**
- * Fetches a URL through the proxy pool, rewrites URLs, returns a blob URL.
- * Auto-rotates proxies on failure.
+ * Finds the best working proxy for a URL.
+ * For Cloudflare Worker: returns the proxy URL directly (server handles everything).
+ * For public proxies: fetches HTML, rewrites URLs, returns blob URL.
  */
 export async function findWorkingProxy(targetUrl: string): Promise<string> {
-  const isCapacitor = typeof (window as any).Capacitor !== 'undefined';
-  if (isCapacitor) return targetUrl;
+  if (typeof (window as any).Capacitor !== 'undefined') return targetUrl;
 
   for (let attempt = 0; attempt < PROXY_POOL.length; attempt++) {
     const idx = (currentIndex + attempt) % PROXY_POOL.length;
-    const proxyUrl = PROXY_POOL[idx](targetUrl);
+    const proxy = PROXY_POOL[idx];
+    const proxyUrl = proxy.build(targetUrl);
 
     try {
-      console.log(`🔄 Trying proxy ${PROXY_NAMES[idx]} for ${targetUrl}`);
+      console.log(`🔄 Trying ${proxy.name} for ${targetUrl}`);
+
       const response = await fetch(proxyUrl, {
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(10000),
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
       });
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const text = await response.text();
+      if (text.length < 500) throw new Error('Response too short');
 
-      if (text.length < 500) throw new Error('Response too short — likely blocked');
+      // Detect rate-limited proxy returning its own homepage
+      if (text.length === 44019) throw new Error('Proxy rate-limited (returned own page)');
 
-      // Detect if proxy returned its own homepage instead of the target
-      // (cors.sh does this when rate-limited — returns 44019 bytes of its own page)
-      if (text.includes('cors.sh') && text.includes('CORS Proxy') && !targetUrl.includes('cors.sh')) {
-        throw new Error('Proxy returned its own page — rate limited');
+      // For Cloudflare Worker — it handles everything server-side
+      // Just return the proxy URL directly for the iframe to load
+      if (proxy.name === 'Cloudflare') {
+        currentIndex = idx;
+        failCounts[idx] = 0;
+        console.log(`✅ Cloudflare Worker ready`);
+        return proxyUrl;
       }
-      if (text.includes('codetabs.com') && text.includes('API') && !targetUrl.includes('codetabs')) {
-        throw new Error('Proxy returned its own page — rate limited');
-      }
 
-      // Rewrite relative URLs so assets load correctly
+      // For public proxies — create blob URL with rewritten assets
       const rewritten = rewriteUrls(text, targetUrl);
-
-      // Inject link interceptor — catches ALL clicks and posts message to parent
-      // This prevents 410 errors from expired stream URLs opening in new tabs
-      const interceptScript = `
-<script>
-(function() {
-  // Remove all target="_blank" to prevent new tab opens
-  document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('a[target]').forEach(function(a) {
-      a.removeAttribute('target');
-    });
-  });
-  // Intercept all clicks on anchor tags
-  document.addEventListener('click', function(e) {
-    var el = e.target;
-    while (el && el.tagName !== 'A') el = el.parentElement;
-    if (el && el.href && el.href.startsWith('http') && !el.href.startsWith(window.location.origin)) {
-      e.preventDefault();
-      e.stopPropagation();
-      window.parent.postMessage({ type: 'NDR_NAVIGATE', url: el.href }, '*');
-    }
-  }, true);
-  // Also intercept window.open calls
-  var origOpen = window.open;
-  window.open = function(url) {
-    if (url && url.startsWith('http')) {
-      window.parent.postMessage({ type: 'NDR_NAVIGATE', url: url }, '*');
-    }
-    return null;
-  };
-})();
-</script>`;
-
-      // Insert interceptor right after <head> tag
-      const injected = rewritten.replace(/<head([^>]*)>/i, `<head$1>${interceptScript}`);
-
-      // Create a blob URL — this loads in iframe without any X-Frame-Options issues
+      const injected = injectInterceptor(rewritten, targetUrl);
       const blob = new Blob([injected], { type: 'text/html; charset=utf-8' });
       const blobUrl = URL.createObjectURL(blob);
 
       currentIndex = idx;
       failCounts[idx] = 0;
-      console.log(`✅ Proxy ${PROXY_NAMES[idx]} succeeded (${text.length} bytes)`);
+      console.log(`✅ ${proxy.name} succeeded (${text.length} bytes)`);
       return blobUrl;
 
     } catch (err) {
-      console.warn(`❌ Proxy ${PROXY_NAMES[idx]} failed:`, err);
+      console.warn(`❌ ${proxy.name} failed:`, err);
       failCounts[idx]++;
     }
   }
 
-  // All proxies failed — return direct URL as last resort
   console.warn('All proxies failed, using direct URL');
   return targetUrl;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function rewriteUrls(html: string, baseUrl: string): string {
+  const base = new URL(baseUrl);
+  const origin = base.origin;
+  const basePath = base.href.substring(0, base.href.lastIndexOf('/') + 1);
+
+  return html
+    .replace(/(href|src|action)=["'](?!https?:\/\/|\/\/|#|data:|javascript:|blob:)([^"']*?)["']/gi,
+      (match, attr, path) => {
+        if (!path) return match;
+        const abs = path.startsWith('/') ? `${origin}${path}` : `${basePath}${path}`;
+        return `${attr}="${abs}"`;
+      })
+    .replace(/url\(['"]?(?!https?:\/\/|\/\/|data:|blob:)([^'")]+)['"]?\)/gi,
+      (match, path) => {
+        const abs = path.startsWith('/') ? `${origin}${path}` : `${basePath}${path}`;
+        return `url("${abs}")`;
+      });
+}
+
+function injectInterceptor(html: string, targetUrl: string): string {
+  const origin = new URL(targetUrl).origin;
+  const script = `<base href="${origin}/">
+<script>
+(function(){
+  document.addEventListener('click',function(e){
+    var el=e.target;
+    while(el&&el.tagName!=='A')el=el.parentElement;
+    if(el&&el.href&&el.href.startsWith('http')){
+      e.preventDefault();e.stopPropagation();
+      window.parent.postMessage({type:'NDR_NAVIGATE',url:el.href},'*');
+    }
+  },true);
+  window.open=function(u){if(u)window.parent.postMessage({type:'NDR_NAVIGATE',url:u},'*');return null;};
+})();
+<\/script>`;
+  return html.replace(/<head([^>]*)>/i, `<head$1>${script}`);
 }
