@@ -115,7 +115,8 @@ const App: React.FC = () => {
       if (hasApi()) {
         try {
           const live = await getLiveState();
-          if (live.track && live.track.url && !isRadioPlaying) {
+          // Only sync if it's a real HTTP URL (not a blob URL which is device-specific)
+          if (live.track && live.track.url && live.track.url.startsWith('http') && !isRadioPlaying) {
             setActiveTrackUrl(live.track.url);
             setCurrentTrackName(live.track.name || '');
           }
@@ -275,7 +276,7 @@ const App: React.FC = () => {
       setCurrentTrackName(cleanTrackName(track.name));
       setIsRadioPlaying(true);
       // Push live track to cloud
-      if (hasApi()) setLiveTrack({ url: track.url, name: cleanTrackName(track.name) }).catch(() => {});
+      if (hasApi() && track.url.startsWith('http')) setLiveTrack({ url: track.url, name: cleanTrackName(track.name) }).catch(() => {});
     }
   }, [activeTrackId, isShuffle]);
 
@@ -290,8 +291,10 @@ const App: React.FC = () => {
     setActiveTrackUrl(track.url);
     setCurrentTrackName(cleanTrackName(track.name));
     setIsRadioPlaying(true);
-    // Push live track to cloud so all listeners hear it
-    if (hasApi()) setLiveTrack({ url: track.url, name: cleanTrackName(track.name) }).catch(() => {});
+    // Push live track to cloud so all listeners hear it (only HTTP URLs work across devices)
+    if (hasApi() && track.url.startsWith('http')) {
+      setLiveTrack({ url: track.url, name: cleanTrackName(track.name) }).catch(() => {});
+    }
   };
 
   const handlePushBroadcast = async (voiceText: string) => {
