@@ -81,28 +81,26 @@ async function readFullBulletin(newsItems: NewsItem[], localTime: string, locati
   _onSetMusicVolume?.(0.15);
 
   await say(`Good day and welcome to Nigeria Diaspora Radio and Television.`);
-  await pause(300);
+  await pause(80);
   await say(`The time is ${localTime}. I am ${NEWSCASTER_NAME}, and here is your news bulletin.`);
-  await pause(400);
+  await pause(120);
 
   if (weather) {
-    await say(`But first, a look at the weather.`);
-    await pause(200);
-    await say(`In ${weather.location}, we are currently seeing ${weather.condition} conditions with a temperature of ${weather.temp}. Do plan your day accordingly.`);
-    await pause(400);
+    await say(`But first, a look at the weather. In ${weather.location}, we are currently seeing ${weather.condition} conditions with a temperature of ${weather.temp}.`);
+    await pause(120);
   }
 
   await say(`Here now are the headlines.`);
-  await pause(300);
+  await pause(80);
 
   for (let i = 0; i < newsItems.length; i++) {
     await say(`${headlineTransition(i, newsItems.length, newsItems[i].category)} ${newsItems[i].title}.`);
-    await pause(250);
+    await pause(60);
   }
 
-  await pause(350);
+  await pause(100);
   await say(`Now the full details on each of those stories.`);
-  await pause(350);
+  await pause(100);
 
   _onStopMusic?.();
 
@@ -113,17 +111,17 @@ async function readFullBulletin(newsItems: NewsItem[], localTime: string, locati
     } else {
       await say(`${headlineTransition(i, newsItems.length, item.category)} ${item.title}.`);
     }
-    await pause(200);
+    await pause(60);
 
     const sentences = item.content.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 0);
     for (const sentence of sentences) {
       await say(sentence);
-      await pause(150);
+      await pause(50);
     }
-    await pause(i < newsItems.length - 1 ? 450 : 300);
+    await pause(i < newsItems.length - 1 ? 120 : 80);
   }
 
-  await pause(300);
+  await pause(80);
   await say(`That is the news. I am ${NEWSCASTER_NAME}. Thank you for staying tuned to Nigeria Diaspora Radio and Television. We are your connection to home, wherever in the world you may be. Stay tuned.`);
 }
 
@@ -132,21 +130,21 @@ async function readHeadlineBulletin(newsItems: NewsItem[], weather?: WeatherData
   _onSetMusicVolume?.(0.15);
 
   await say(`Good day. I am ${NEWSCASTER_NAME}, and you are listening to ${APP_NAME}, the voice of Nigerians abroad.`);
-  await pause(300);
+  await pause(80);
   await say(`Here is a summary of the headlines at this hour.`);
-  await pause(300);
+  await pause(80);
 
   if (weather) {
     await say(`A quick look at the weather: in ${weather.location}, expect ${weather.condition} conditions with temperatures around ${weather.temp}.`);
-    await pause(300);
+    await pause(80);
   }
 
   for (let i = 0; i < newsItems.length; i++) {
     await say(`${headlineTransition(i, newsItems.length, newsItems[i].category)} ${newsItems[i].title}.`);
-    await pause(250);
+    await pause(60);
   }
 
-  await pause(300);
+  await pause(80);
   await say(`Those are your headlines. Join us at the top of the hour for the full bulletin. I am ${NEWSCASTER_NAME}. Stay tuned to ${APP_NAME}.`);
 }
 
@@ -156,7 +154,7 @@ export async function getDetailedBulletinAudio(params: {
 }): Promise<Uint8Array | null> {
   const { location, localTime, newsItems, weather, isBrief } = params;
 
-  await openBroadcastSession(0.90);
+  await openBroadcastSession(0.95);
   _onSpeechStart?.();
 
   try {

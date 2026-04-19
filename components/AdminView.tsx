@@ -52,6 +52,7 @@ const AdminView: React.FC<AdminViewProps> = ({
   const [reports, setReports] = useState<ListenerReport[]>([]);
   const [voiceMsg, setVoiceMsg] = useState('');
   const [nextSyncIn, setNextSyncIn] = useState<string>('');
+  const [liveStreamUrl, setLiveStreamUrlState] = useState(() => dbService.getLiveStreamUrl());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -173,6 +174,48 @@ const AdminView: React.FC<AdminViewProps> = ({
             </button>
             <div className="bg-green-50 py-2.5 px-5 rounded-2xl border border-green-100 inline-block shadow-inner"><span className="text-[8px] font-black text-green-700 uppercase block tracking-widest truncate max-w-[200px]">{currentTrackName}</span></div>
           </div>
+
+          {/* ── LIVE STREAM URL — what all listeners hear ── */}
+          <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-sm space-y-2">
+            <div className="flex items-center space-x-2">
+              <i className="fas fa-broadcast-tower text-blue-500 text-sm"></i>
+              <h3 className="text-[8px] font-black uppercase tracking-widest text-blue-700">Listener Stream URL</h3>
+            </div>
+            <p className="text-[6px] text-gray-400 leading-relaxed">
+              Set a live stream URL that ALL listeners hear when they tap play. Use Zeno.fm, Radio.co, or any .mp3/.m3u8 stream. This is how listeners hear the same music as you.
+            </p>
+            <input
+              type="url"
+              value={liveStreamUrl}
+              onChange={e => setLiveStreamUrlState(e.target.value)}
+              placeholder="https://stream.zeno.fm/your-station-id"
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-[9px] outline-none focus:border-blue-400"
+            />
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  dbService.setLiveStreamUrl(liveStreamUrl.trim());
+                  setStatusMsg('✅ Stream URL saved — listeners will hear this when they tap play');
+                  setTimeout(() => setStatusMsg(''), 3000);
+                }}
+                className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-[7px] font-black uppercase"
+              >
+                Save Stream URL
+              </button>
+              {liveStreamUrl && (
+                <button
+                  onClick={() => { setLiveStreamUrlState(''); dbService.setLiveStreamUrl(''); }}
+                  className="px-3 bg-gray-100 text-gray-500 py-2 rounded-lg text-[7px] font-black uppercase"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <p className="text-[6px] text-blue-500 font-bold">
+              💡 Free streams: zeno.fm (free tier) · radio.co · mixlr.com · spreaker.com
+            </p>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <button onClick={() => folderInputRef.current?.click()} className="bg-white p-4 rounded-2xl border border-green-100 flex flex-col items-center justify-center space-y-2 hover:bg-green-50 shadow-sm"><i className="fas fa-folder-open text-lg text-green-600"></i><span className="text-[8px] font-black uppercase tracking-widest">Import Folder</span></button>
             <div className="bg-white p-4 rounded-2xl border border-amber-100 space-y-2 shadow-sm">

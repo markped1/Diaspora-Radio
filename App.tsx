@@ -9,6 +9,7 @@ import { scanNigerianNewspapers } from './services/newsAIService';
 import { getDetailedBulletinAudio, getNewsAudio, getJingleAudio, registerSpeechCallbacks } from './services/aiDjService';
 import { UserRole, MediaFile, AdminMessage, AdminLog, NewsItem, ListenerReport } from './types';
 import { DESIGNER_NAME, APP_NAME, JINGLE_1, JINGLE_2 } from './constants';
+import { getSharedMedia, getLiveState, setLiveTrack, hasApi } from './services/apiService';
 
 const App: React.FC = () => {
   const [role, setRole] = useState<UserRole>(UserRole.LISTENER);
@@ -84,21 +85,49 @@ const App: React.FC = () => {
         return item;
       });
 
+      // Merge cloud media (shared across all devices) with local media
+      let cloudMedia: MediaFile[] = [];
+      if (hasApi()) {
+        try {
+          cloudMedia = await getSharedMedia();
+        } catch {}
+      }
+
+      // Cloud media takes priority — local media is fallback
+      const allMedia = [
+        ...cloudMedia,
+        ...processedMedia.filter(local => !cloudMedia.find(c => c.id === local.id))
+      ];
+
       setNews(n || []);
       setLogs(l || []);
-      setSponsoredMedia(processedMedia.filter(item => item.type === 'video' || item.type === 'image' || item.type === 'youtube' || item.type === 'iptv'));
-      setAudioPlaylist(processedMedia.filter(item => item.type === 'audio'));
+      setSponsoredMedia(allMedia.filter(item => item.type === 'video' || item.type === 'image' || item.type === 'youtube' || item.type === 'iptv'));
+      setAudioPlaylist(allMedia.filter(item => item.type === 'audio'));
       setAdminMessages(msg || []);
       setReports(rep || []);
 
       if (activeTrackId) {
-        const activeTrack = processedMedia.find(t => t.id === activeTrackId);
+        const activeTrack = allMedia.find(t => t.id === activeTrackId);
         if (activeTrack) setActiveTrackUrl(activeTrack.url);
+      }
+
+      // Sync live state from cloud (what admin is playing)
+      if (hasApi()) {
+        try {
+          const live = await getLiveState();
+          if (live.track && live.track.url && !isRadioPlaying) {
+            setActiveTrackUrl(live.track.url);
+            setCurrentTrackName(live.track.name || '');
+          }
+          if (live.messages?.length) {
+            setAdminMessages(live.messages);
+          }
+        } catch {}
       }
     } catch (err) {
       console.error("Data fetch error", err);
     }
-  }, [activeTrackId]);
+  }, [activeTrackId, isRadioPlaying]);
 
   // Fetch fresh news from RSS and dump into newsroom + state
   const refreshNews = useCallback(async () => {
@@ -215,13 +244,17 @@ const App: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-    // Fetch news immediately on startup and dump into newsroom
     refreshNews();
 
     const interactionHandler = () => setHasInteracted(true);
     window.addEventListener('click', interactionHandler, { once: true });
+
+    // Poll cloud state every 10 seconds so listeners stay in sync with admin
+    const syncInterval = hasApi() ? setInterval(() => fetchData(), 10000) : null;
+
     return () => {
       window.removeEventListener('click', interactionHandler);
+      if (syncInterval) clearInterval(syncInterval);
     };
   }, [fetchData, refreshNews]);
 
@@ -241,6 +274,8 @@ const App: React.FC = () => {
       setActiveTrackUrl(track.url);
       setCurrentTrackName(cleanTrackName(track.name));
       setIsRadioPlaying(true);
+      // Push live track to cloud
+      if (hasApi()) setLiveTrack({ url: track.url, name: cleanTrackName(track.name) }).catch(() => {});
     }
   }, [activeTrackId, isShuffle]);
 
@@ -255,6 +290,8 @@ const App: React.FC = () => {
     setActiveTrackUrl(track.url);
     setCurrentTrackName(cleanTrackName(track.name));
     setIsRadioPlaying(true);
+    // Push live track to cloud so all listeners hear it
+    if (hasApi()) setLiveTrack({ url: track.url, name: cleanTrackName(track.name) }).catch(() => {});
   };
 
   const handlePushBroadcast = async (voiceText: string) => {

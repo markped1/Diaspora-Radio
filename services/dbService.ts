@@ -16,6 +16,7 @@ class DBService {
     LAST_SYNC: 'ndn_radio_last_sync',
     SOCIAL_LINKS: 'ndn_radio_social_links',
     SPORT_CHANNELS: 'ndn_radio_sport_channels',
+    LIVE_STREAM_URL: 'ndn_radio_live_stream_url',
   };
 
   private async getDB(): Promise<IDBDatabase> {
@@ -221,6 +222,14 @@ class DBService {
       this.STORAGE_KEYS.SPORT_CHANNELS,
       JSON.stringify(channels.filter(c => c.id !== id))
     );
+  }
+
+  getLiveStreamUrl(): string {
+    return localStorage.getItem(this.STORAGE_KEYS.LIVE_STREAM_URL) || '';
+  }
+
+  setLiveStreamUrl(url: string): void {
+    localStorage.setItem(this.STORAGE_KEYS.LIVE_STREAM_URL, url);
   }
 }
 

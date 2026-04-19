@@ -10,6 +10,7 @@ import {
 } from '../services/aiDjService';
 import { webSpeechSpeak } from '../services/webSpeechService';
 import { JINGLE_DJ } from '../constants';
+import { dbService } from '../services/dbService';
 
 interface RadioPlayerProps {
   onStateChange: (isPlaying: boolean) => void;
@@ -329,8 +330,8 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
     if (!audioRef.current) return;
 
-    // If no track selected, play the NDR live stream
-    const streamUrl = activeTrackUrl || 'https://stream.zeno.fm/0r0xa792kwzuv';
+    // If no track selected, play the saved live stream URL or default NDR stream
+    const streamUrl = activeTrackUrl || dbService.getLiveStreamUrl() || 'https://stream.zeno.fm/0r0xa792kwzuv';
 
     if (isPlaying) {
       audioRef.current.pause();
