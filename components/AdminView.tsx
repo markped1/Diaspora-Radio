@@ -84,6 +84,11 @@ const AdminView: React.FC<AdminViewProps> = ({
     if (!files || files.length === 0) return;
     setIsProcessing(true);
     let count = 0;
+
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+    const useCloud = Boolean(cloudName && uploadPreset);
+
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -96,23 +101,53 @@ const AdminView: React.FC<AdminViewProps> = ({
         let finalType: 'audio' | 'video' | 'image' = isAudio ? 'audio' : (isVideo ? 'video' : 'image');
         if (!isAudio && !isVideo && !isImage) continue;
 
-        setStatusMsg(`Importing: ${count + 1}...`);
-        await dbService.addMedia({ 
-          id: 'local-' + Math.random().toString(36).substr(2, 9), 
-          name: file.name, 
-          url: '', 
-          file: file,
-          type: finalType, 
-          timestamp: Date.now(), 
-          likes: 0 
+        setStatusMsg(`Uploading ${count + 1} of ${files.length}...`);
+
+        let fileUrl = '';
+        let fileBlob: File | undefined = file;
+
+        if (useCloud) {
+          // Upload to Cloudinary — permanent URL accessible by all listeners
+          try {
+            const form = new FormData();
+            form.append('file', file);
+            form.append('upload_preset', uploadPreset);
+            form.append('resource_type', isAudio ? 'video' : finalType); // Cloudinary uses 'video' for audio
+            const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/upload`, {
+              method: 'POST',
+              body: form,
+            });
+            const data = await res.json();
+            if (data.secure_url) {
+              fileUrl = data.secure_url;
+              fileBlob = undefined; // Don't store blob — use cloud URL
+              setStatusMsg(`✅ Uploaded to cloud: ${file.name}`);
+            }
+          } catch (err) {
+            console.warn('Cloudinary upload failed, saving locally:', err);
+          }
+        }
+
+        await dbService.addMedia({
+          id: 'local-' + Math.random().toString(36).substr(2, 9),
+          name: file.name,
+          url: fileUrl,
+          file: fileBlob,
+          type: finalType,
+          timestamp: Date.now(),
+          likes: 0
         });
         count++;
       }
-      setStatusMsg(`Success: ${count} items added.`);
+      setStatusMsg(useCloud
+        ? `✅ ${count} files uploaded to cloud — all listeners can access them`
+        : `✅ ${count} files saved locally. Add Cloudinary keys to share with listeners.`
+      );
       onRefreshData();
       await loadData();
     } catch (error) { setStatusMsg('Import Error.'); }
-    finally { setIsProcessing(false); setTimeout(() => setStatusMsg(''), 5000); if (e.target) e.target.value = ''; }
+    finally { setIsProcessing(false); setTimeout(() => setStatusMsg(''), 6000); if (e.target) e.target.value = ''; }
+  };
   };
 
   const handleManualBroadcast = async (item: NewsItem) => {
