@@ -330,13 +330,26 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
     if (!audioRef.current) return;
 
-    // If no track selected and no live stream configured, don't try to play
+    // If no track selected, check cloud for what admin is playing
     const liveStream = dbService.getLiveStreamUrl();
-    const streamUrl = activeTrackUrl || liveStream || null;
+    let streamUrl = activeTrackUrl || liveStream || null;
+
+    // If still no URL, try fetching from cloud right now
+    if (!streamUrl && hasApi()) {
+      try {
+        setStatus('LOADING');
+        const { getLiveState } = await import('./services/apiService' as any);
+        const live = await getLiveState();
+        if (live?.track?.url?.startsWith('http')) {
+          streamUrl = live.track.url;
+        }
+      } catch {}
+    }
 
     if (!streamUrl) {
       setStatus('IDLE');
-      setErrorMessage('');
+      setErrorMessage('No stream available yet. Admin needs to start playing music.');
+      setTimeout(() => setErrorMessage(''), 3000);
       return;
     }
 
@@ -418,7 +431,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
           }`}>
             {isBroadcasting
               ? (isBroadcastPaused() ? '⏸ BROADCAST PAUSED' : '🔴 LIVE BROADCAST — TAP TO PAUSE')
-              : (activeTrackUrl ? `NOW PLAYING: ${currentTrackName}` : dbService.getLiveStreamUrl() ? '📻 TAP TO LISTEN LIVE' : 'WAITING FOR ADMIN TO GO LIVE')}
+              : (activeTrackUrl ? `NOW PLAYING: ${currentTrackName}` : '📻 TAP TO PLAY')}
           </span>
         </div>
 
@@ -433,7 +446,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
         <div className="flex items-center space-x-3">
           <button
             onClick={handlePlayPause}
-            disabled={(status === 'LOADING' && !isBroadcasting) || (!activeTrackUrl && !dbService.getLiveStreamUrl() && !isBroadcasting)}
+            disabled={(status === 'LOADING' && !isBroadcasting)}
             className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all border-4 border-white ${
               isBroadcasting
                 ? (isBroadcastPaused() ? 'bg-amber-500' : 'bg-red-500')
