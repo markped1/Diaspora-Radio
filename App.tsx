@@ -85,45 +85,40 @@ const App: React.FC = () => {
         return item;
       });
 
-      // Merge cloud media (shared across all devices) with local media
-      let cloudMedia: MediaFile[] = [];
-      if (hasApi()) {
-        try {
-          cloudMedia = await getSharedMedia();
-        } catch {}
-      }
-
-      // Cloud media takes priority — local media is fallback
-      const allMedia = [
-        ...cloudMedia,
-        ...processedMedia.filter(local => !cloudMedia.find(c => c.id === local.id))
-      ];
-
       setNews(n || []);
       setLogs(l || []);
-      setSponsoredMedia(allMedia.filter(item => item.type === 'video' || item.type === 'image' || item.type === 'youtube' || item.type === 'iptv'));
-      setAudioPlaylist(allMedia.filter(item => item.type === 'audio'));
+      setSponsoredMedia(processedMedia.filter(item => item.type === 'video' || item.type === 'image' || item.type === 'youtube' || item.type === 'iptv'));
+      setAudioPlaylist(processedMedia.filter(item => item.type === 'audio'));
       setAdminMessages(msg || []);
       setReports(rep || []);
 
       if (activeTrackId) {
-        const activeTrack = allMedia.find(t => t.id === activeTrackId);
+        const activeTrack = processedMedia.find(t => t.id === activeTrackId);
         if (activeTrack) setActiveTrackUrl(activeTrack.url);
       }
 
-      // Sync live state from cloud (what admin is playing)
+      // Sync cloud state in background — non-blocking, doesn't slow down UI
       if (hasApi()) {
-        try {
-          const live = await getLiveState();
-          // Only sync if it's a real HTTP URL (not a blob URL which is device-specific)
-          if (live.track && live.track.url && live.track.url.startsWith('http') && !isRadioPlaying) {
+        getLiveState().then(live => {
+          if (live.track?.url?.startsWith('http') && !isRadioPlaying) {
             setActiveTrackUrl(live.track.url);
             setCurrentTrackName(live.track.name || '');
           }
-          if (live.messages?.length) {
-            setAdminMessages(live.messages);
+          if (live.messages?.length) setAdminMessages(live.messages);
+        }).catch(() => {});
+
+        getSharedMedia().then(cloudMedia => {
+          if (cloudMedia.length > 0) {
+            setAudioPlaylist(prev => {
+              const merged = [...cloudMedia.filter(c => c.type === 'audio'), ...prev.filter(p => !cloudMedia.find(c => c.id === p.id))];
+              return merged;
+            });
+            setSponsoredMedia(prev => {
+              const merged = [...cloudMedia.filter(c => c.type !== 'audio'), ...prev.filter(p => !cloudMedia.find(c => c.id === p.id))];
+              return merged;
+            });
           }
-        } catch {}
+        }).catch(() => {});
       }
     } catch (err) {
       console.error("Data fetch error", err);
@@ -250,8 +245,8 @@ const App: React.FC = () => {
     const interactionHandler = () => setHasInteracted(true);
     window.addEventListener('click', interactionHandler, { once: true });
 
-    // Poll cloud state every 10 seconds so listeners stay in sync with admin
-    const syncInterval = hasApi() ? setInterval(() => fetchData(), 10000) : null;
+    // Poll cloud state every 15 seconds so listeners stay in sync with admin
+    const syncInterval = hasApi() ? setInterval(() => fetchData(), 15000) : null;
 
     return () => {
       window.removeEventListener('click', interactionHandler);
