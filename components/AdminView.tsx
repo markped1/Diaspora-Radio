@@ -107,21 +107,23 @@ const AdminView: React.FC<AdminViewProps> = ({
         let fileBlob: File | undefined = file;
 
         if (useCloud) {
-          // Upload to Cloudinary — permanent URL accessible by all listeners
           try {
             const form = new FormData();
             form.append('file', file);
             form.append('upload_preset', uploadPreset);
-            form.append('resource_type', isAudio ? 'video' : finalType); // Cloudinary uses 'video' for audio
-            const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/upload`, {
+            // resource_type goes in the URL for Cloudinary
+            const resourceType = (isAudio || isVideo) ? 'video' : 'image';
+            const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`, {
               method: 'POST',
               body: form,
             });
             const data = await res.json();
             if (data.secure_url) {
               fileUrl = data.secure_url;
-              fileBlob = undefined; // Don't store blob — use cloud URL
-              setStatusMsg(`✅ Uploaded to cloud: ${file.name}`);
+              fileBlob = undefined;
+              setStatusMsg(`✅ Uploaded: ${file.name}`);
+            } else {
+              console.warn('Cloudinary error:', data);
             }
           } catch (err) {
             console.warn('Cloudinary upload failed, saving locally:', err);
@@ -147,7 +149,6 @@ const AdminView: React.FC<AdminViewProps> = ({
       await loadData();
     } catch (error) { setStatusMsg('Import Error.'); }
     finally { setIsProcessing(false); setTimeout(() => setStatusMsg(''), 6000); if (e.target) e.target.value = ''; }
-  };
   };
 
   const handleManualBroadcast = async (item: NewsItem) => {
