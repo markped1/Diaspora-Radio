@@ -187,7 +187,7 @@ const ListenerView: React.FC<ListenerViewProps> = ({
                   autoPlay
                   className="w-full h-full object-contain"
                 />
-              ) : currentAd.type === 'youtube' ? (
+              ) : currentAd.type === 'youtube' && currentAd.url.includes('youtube.com/embed') ? (
                 <iframe
                   key={`${currentAd.id}-${tvAudioOn}`}
                   src={tvAudioOn
@@ -201,6 +201,20 @@ const ListenerView: React.FC<ListenerViewProps> = ({
                   allowFullScreen
                   title={currentAd.name}
                 />
+              ) : currentAd.type === 'youtube' ? (
+                /* Sports stream URL — show watch button instead of broken iframe */
+                <div className="w-full h-full bg-gray-900 flex flex-col items-center justify-center space-y-3 p-4">
+                  <span className="text-4xl">⚽</span>
+                  <p className="text-[8px] font-black text-white uppercase text-center">Live Match Available</p>
+                  <p className="text-[6px] text-gray-400 text-center truncate px-4">{currentAd.url.replace('https://', '')}</p>
+                  <button
+                    onClick={() => window.open(currentAd.url, '_blank')}
+                    className="bg-red-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center space-x-2 shadow-lg active:scale-95">
+                    <i className="fas fa-play text-sm"></i>
+                    <span>Watch Live Match</span>
+                  </button>
+                  <p className="text-[6px] text-gray-500 text-center">Opens in your browser — streams play fully</p>
+                </div>
               ) : (
                 <SponsoredVideo video={currentAd} onEnded={nextAd} isMutedByRadio={!tvAudioOn} />
               )}
@@ -328,6 +342,40 @@ const ListenerView: React.FC<ListenerViewProps> = ({
 
       {/* Footer (Text color dark green, size +15%) */}
       <footer className="mt-8 pt-6 border-t border-green-100 text-center space-y-1 pb-6">
+
+        {/* ── DOWNLOAD APP BUTTON ── */}
+        <div className="mb-6 px-2 space-y-2">
+          <p className="text-[7px] font-black uppercase tracking-widest text-green-700 text-center">Get the App</p>
+          <p className="text-[6px] text-green-600/50 text-center">Full radio, TV, sports & live news</p>
+
+          {/* Android */}
+          <a
+            href="https://github.com/markped1/Diaspora-Radio/releases/latest/download/app-debug.apk"
+            className="flex items-center justify-between w-full bg-gray-950 text-white py-3 px-4 rounded-2xl shadow-lg active:scale-95 transition-all"
+          >
+            <div className="flex items-center space-x-3">
+              <i className="fab fa-android text-2xl text-green-400"></i>
+              <div className="text-left">
+                <p className="text-[6px] text-gray-400 uppercase tracking-widest">Download for</p>
+                <p className="text-[12px] font-black uppercase">Android</p>
+              </div>
+            </div>
+            <i className="fas fa-download text-gray-400"></i>
+          </a>
+
+          {/* iOS — coming soon */}
+          <div className="flex items-center justify-between w-full bg-gray-100 text-gray-400 py-3 px-4 rounded-2xl">
+            <div className="flex items-center space-x-3">
+              <i className="fab fa-apple text-2xl text-gray-400"></i>
+              <div className="text-left">
+                <p className="text-[6px] text-gray-400 uppercase tracking-widest">Coming soon</p>
+                <p className="text-[12px] font-black uppercase text-gray-500">iOS / iPhone</p>
+              </div>
+            </div>
+            <span className="text-[6px] font-black uppercase bg-gray-200 text-gray-500 px-2 py-1 rounded-full">Soon</span>
+          </div>
+        </div>
+
         <div className="flex items-center justify-center space-x-4 mb-4">
            <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center hover:bg-green-200 transition-colors cursor-pointer"><i className="fab fa-facebook-f text-[12px] text-green-950"></i></div>
            <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center hover:bg-green-200 transition-colors cursor-pointer"><i className="fab fa-twitter text-[12px] text-green-950"></i></div>

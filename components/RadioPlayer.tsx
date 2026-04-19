@@ -327,13 +327,25 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       return;
     }
 
-    if (!audioRef.current || !activeTrackUrl) return;
+    if (!audioRef.current) return;
+
+    // If no track selected, play the NDR live stream
+    const streamUrl = activeTrackUrl || 'https://stream.zeno.fm/0r0xa792kwzuv';
 
     if (isPlaying) {
       audioRef.current.pause();
     } else {
       setStatus('LOADING');
       setErrorMessage('');
+
+      // Load stream if not already loaded
+      if (!activeTrackUrl && audioRef.current.src !== streamUrl) {
+        isStreamRef.current = true;
+        audioRef.current.removeAttribute('crossorigin');
+        audioRef.current.src = streamUrl;
+        audioRef.current.load();
+      }
+
       if (!isStreamRef.current) initAudioContext();
       try {
         await audioRef.current.play();
@@ -398,7 +410,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
           }`}>
             {isBroadcasting
               ? (isBroadcastPaused() ? '⏸ BROADCAST PAUSED' : '🔴 LIVE BROADCAST — TAP TO PAUSE')
-              : (activeTrackUrl ? `NOW PLAYING: ${currentTrackName}` : 'NO AUDIO SELECTED')}
+              : (activeTrackUrl ? `NOW PLAYING: ${currentTrackName}` : '📻 TAP TO LISTEN LIVE')}
           </span>
         </div>
 
@@ -418,7 +430,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
                 ? (isBroadcastPaused() ? 'bg-amber-500' : 'bg-red-500')
                 : status === 'ERROR' ? 'bg-red-500' : 'bg-[#008751]'
             } text-white`}
-            disabled={status === 'LOADING' && !isBroadcasting}
+            disabled={status === 'LOADING' && !isBroadcasting && !!activeTrackUrl}
           >
             {status === 'LOADING' && !isBroadcasting
               ? <i className="fas fa-circle-notch fa-spin"></i>

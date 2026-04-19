@@ -19,21 +19,75 @@ import {
 // Detect if running inside Capacitor (Android/iOS app)
 const isCapacitor = typeof (window as any).Capacitor !== 'undefined';
 
-// Native in-app browser — uses Chrome Custom Tabs on Android (most reliable)
-async function openInAppBrowser(url: string): Promise<void> {
+// Use Chrome Custom Tabs with injected floating Push Live button
+async function openInAppBrowser(url: string, onPush?: (matchUrl: string) => void): Promise<void> {
   try {
     const { InAppBrowser } = await import('@capgo/inappbrowser');
-    // Use open() with activity toolbar — Chrome Custom Tabs on Android
-    // This is the most reliable method, stays within app context
-    await InAppBrowser.open({
+
+    // Floating Push Live button injected into every page
+    const floatingButton = `
+      (function(){
+        if(document.getElementById('ndr-push-btn')) return;
+        var btn = document.createElement('div');
+        btn.id = 'ndr-push-btn';
+        btn.innerHTML = '🔴 PUSH LIVE';
+        btn.style.cssText = 'position:fixed;bottom:20px;right:16px;z-index:999999;background:#e53e3e;color:#fff;font-weight:900;font-size:13px;padding:12px 18px;border-radius:50px;box-shadow:0 4px 20px rgba(0,0,0,0.5);cursor:pointer;letter-spacing:1px;border:2px solid #fff;';
+        btn.onclick = function(){
+          window.mobileApp.postMessage({ action: 'PUSH_LIVE', url: window.location.href });
+          btn.innerHTML = '✅ PUSHED!';
+          btn.style.background = '#38a169';
+          setTimeout(function(){ btn.innerHTML = '🔴 PUSH LIVE'; btn.style.background = '#e53e3e'; }, 2000);
+        };
+        document.body.appendChild(btn);
+      })();
+    `;
+
+    // Listen for push message from the injected button
+    const msgListener = await InAppBrowser.addListener('messageFromWebview', (event: any) => {
+      const data = event.detail || event;
+      if (data?.action === 'PUSH_LIVE' && data?.url && onPush) {
+        onPush(data.url);
+      }
+    });
+
+    // Inject button on every page load
+    const loadListener = await InAppBrowser.addListener('browserPageLoaded', async () => {
+      try {
+        await InAppBrowser.executeScript({ code: floatingButton });
+      } catch {}
+    });
+
+    // Track URL changes
+    const urlListener = await InAppBrowser.addListener('urlChangeEvent', async (event: any) => {
+      setTimeout(async () => {
+        try {
+          await InAppBrowser.executeScript({ code: floatingButton });
+        } catch {}
+      }, 1500);
+    });
+
+    // Clean up on close
+    const closeListener = await InAppBrowser.addListener('closeEvent', () => {
+      msgListener.remove();
+      loadListener.remove();
+      urlListener.remove();
+      closeListener.remove();
+    });
+
+    await InAppBrowser.openWebView({
       url,
       toolbarColor: '#008751',
-      toolbarTextColor: '#ffffff',
-      showArrow: false,
+      title: 'NDR Sports — Tap 🔴 PUSH LIVE to broadcast',
       showReloadButton: true,
+      activeNativeNavigationForWebview: true,
+      openBlankTargetInWebView: true,
+      ignoreUntrustedSSLError: true,
+      isPresentAfterPageLoad: true,
+      enableZoom: true,
     });
+
   } catch (e) {
-    console.error('InAppBrowser failed:', e);
+    console.error('openWebView failed:', e);
     window.open(url, '_blank');
   }
 }
@@ -43,15 +97,15 @@ interface SportsTvProps {
 }
 
 const BOOKMARKS = [
-  { name: 'Yalla Live',    url: 'https://yalla-live.cyou',         logo: '⚽' },
-  { name: 'Kora 24',       url: 'https://kora24.site88.one',       logo: '🎯' },
-  { name: 'HesGoal',       url: 'https://hesgoals.mov',            logo: '🥅' },
-  { name: 'DaddyLive',     url: 'https://daddylive.mp',            logo: '📺' },
-  { name: 'Sportsurge',    url: 'https://sportsurge.ws',           logo: '⚡' },
-  { name: 'Total Sportek', url: 'https://www.total-sportek.to',    logo: '🏆' },
-  { name: 'VIP League',    url: 'https://vipleague.im',            logo: '👑' },
-  { name: 'RonaTV',        url: 'https://www.ronatv.sbs',          logo: '🌍' },
-  { name: 'Footy100',      url: 'https://footy100.net',            logo: '🦶' },
+  { name: 'Yalla Live',    url: 'https://yalla-live.cyou/schedule',    logo: '⚽' },
+  { name: 'Kora 24',       url: 'https://kora24.site88.one',           logo: '🎯' },
+  { name: 'HesGoal',       url: 'https://hesgoals.mov/schedule',       logo: '🥅' },
+  { name: 'DaddyLive',     url: 'https://daddylive.mp/schedule.php',   logo: '📺' },
+  { name: 'Sportsurge',    url: 'https://sportsurge.ws',               logo: '⚡' },
+  { name: 'Total Sportek', url: 'https://www.total-sportek.to',        logo: '🏆' },
+  { name: 'VIP League',    url: 'https://vipleague.im/football',       logo: '👑' },
+  { name: 'RonaTV',        url: 'https://www.ronatv.sbs',              logo: '🌍' },
+  { name: 'Footy100',      url: 'https://footy100.net',                logo: '🦶' },
 ];
 
 const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
@@ -73,6 +127,7 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
   const [saveLabel, setSaveLabel] = useState('');
   const [showSaveForm, setShowSaveForm] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [liveUrl, setLiveUrl] = useState(''); // tracks URL as admin browses
 
   useEffect(() => {
     dbService.getSportChannels().then(setSavedMatches);
@@ -303,21 +358,36 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
         <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
 
           {isCapacitor ? (
-            /* ── ANDROID: tap to open in native WebView — streams play fully ── */
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 space-y-4 p-4">
-              <span className="text-5xl">⚽</span>
-              <p className="text-[9px] font-black text-white uppercase text-center">
-                {targetUrl.replace('https://', '')}
+            /* ── ANDROID: open WebView with floating Push Live button ── */
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 space-y-3 p-4">
+              <span className="text-4xl">⚽</span>
+              <p className="text-[9px] font-black text-white uppercase text-center">NDR Sports Browser</p>
+              <p className="text-[7px] text-gray-400 text-center leading-relaxed">
+                Browse to any match. A red <span className="text-red-400 font-bold">🔴 PUSH LIVE</span> button floats on every page. Tap it to instantly broadcast the match to all listeners.
               </p>
               <button
-                onClick={() => openInAppBrowser(targetUrl)}
-                className="bg-green-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center space-x-2 shadow-lg active:scale-95">
-                <i className="fas fa-play text-sm"></i>
-                <span>Watch Inside App</span>
+                onClick={() => {
+                  openInAppBrowser(targetUrl, async (matchUrl: string) => {
+                    // Admin tapped Push Live inside the browser
+                    const ch: SportChannel = {
+                      id: 'live-' + Math.random().toString(36).substr(2, 9),
+                      name: 'Live Match',
+                      url: matchUrl,
+                      logo: '⚽', category: 'Football',
+                      matchInfo: matchUrl, isLive: true,
+                      timestamp: Date.now(),
+                    };
+                    await dbService.saveSportChannel(ch);
+                    setSavedMatches(await dbService.getSportChannels());
+                    onPushLive(ch);
+                    flash('🔴 Match pushed live to listeners!');
+                  });
+                }}
+                className="w-full bg-green-600 text-white px-4 py-3 rounded-xl text-[10px] font-black uppercase flex items-center justify-center space-x-2 shadow-lg active:scale-95">
+                <i className="fas fa-globe text-sm"></i>
+                <span>Open Sports Browser</span>
               </button>
-              <p className="text-[6px] text-gray-500 text-center">
-                Opens in full-screen in-app browser — all streams play
-              </p>
+              {feedback && <p className="text-[8px] font-black text-green-400 animate-pulse">{feedback}</p>}
             </div>
           ) : (
             /* ── PC: proxy iframe ── */
@@ -357,10 +427,10 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
                   className="w-full h-full border-0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                   allowFullScreen
+                  referrerPolicy="no-referrer"
                   title="Football Browser"
                   onLoad={handleIframeLoad}
                   onError={handleError}
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
                 />
               )}
             </>

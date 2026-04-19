@@ -61,6 +61,16 @@ export function getProxiedUrl(targetUrl: string): string {
 export async function findWorkingProxy(targetUrl: string): Promise<string> {
   if (typeof (window as any).Capacitor !== 'undefined') return targetUrl;
 
+  // If Cloudflare Worker is configured — use it directly as iframe src
+  // The worker handles all sub-resources server-side
+  if (CF_WORKER) {
+    const workerUrl = `${CF_WORKER}?url=${encodeURIComponent(targetUrl)}`;
+    console.log(`🔄 Using Cloudflare Worker: ${workerUrl}`);
+    currentIndex = 0;
+    return workerUrl;
+  }
+
+  // No Cloudflare Worker — try public proxies with blob URL approach
   for (let attempt = 0; attempt < PROXY_POOL.length; attempt++) {
     const idx = (currentIndex + attempt) % PROXY_POOL.length;
     const proxy = PROXY_POOL[idx];
@@ -78,20 +88,8 @@ export async function findWorkingProxy(targetUrl: string): Promise<string> {
 
       const text = await response.text();
       if (text.length < 500) throw new Error('Response too short');
+      if (text.length === 44019) throw new Error('Proxy rate-limited');
 
-      // Detect rate-limited proxy returning its own homepage
-      if (text.length === 44019) throw new Error('Proxy rate-limited (returned own page)');
-
-      // For Cloudflare Worker — it handles everything server-side
-      // Just return the proxy URL directly for the iframe to load
-      if (proxy.name === 'Cloudflare') {
-        currentIndex = idx;
-        failCounts[idx] = 0;
-        console.log(`✅ Cloudflare Worker ready`);
-        return proxyUrl;
-      }
-
-      // For public proxies — create blob URL with rewritten assets
       const rewritten = rewriteUrls(text, targetUrl);
       const injected = injectInterceptor(rewritten, targetUrl);
       const blob = new Blob([injected], { type: 'text/html; charset=utf-8' });
