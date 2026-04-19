@@ -330,8 +330,15 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
     if (!audioRef.current) return;
 
-    // If no track selected, play the saved live stream URL or default NDR stream
-    const streamUrl = activeTrackUrl || dbService.getLiveStreamUrl() || 'https://stream.zeno.fm/0r0xa792kwzuv';
+    // If no track selected and no live stream configured, don't try to play
+    const liveStream = dbService.getLiveStreamUrl();
+    const streamUrl = activeTrackUrl || liveStream || null;
+
+    if (!streamUrl) {
+      setStatus('IDLE');
+      setErrorMessage('');
+      return;
+    }
 
     if (isPlaying) {
       audioRef.current.pause();
@@ -411,7 +418,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
           }`}>
             {isBroadcasting
               ? (isBroadcastPaused() ? '⏸ BROADCAST PAUSED' : '🔴 LIVE BROADCAST — TAP TO PAUSE')
-              : (activeTrackUrl ? `NOW PLAYING: ${currentTrackName}` : '📻 TAP TO LISTEN LIVE')}
+              : (activeTrackUrl ? `NOW PLAYING: ${currentTrackName}` : dbService.getLiveStreamUrl() ? '📻 TAP TO LISTEN LIVE' : 'WAITING FOR ADMIN TO GO LIVE')}
           </span>
         </div>
 
@@ -426,12 +433,12 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
         <div className="flex items-center space-x-3">
           <button
             onClick={handlePlayPause}
+            disabled={(status === 'LOADING' && !isBroadcasting) || (!activeTrackUrl && !dbService.getLiveStreamUrl() && !isBroadcasting)}
             className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all border-4 border-white ${
               isBroadcasting
                 ? (isBroadcastPaused() ? 'bg-amber-500' : 'bg-red-500')
                 : status === 'ERROR' ? 'bg-red-500' : 'bg-[#008751]'
             } text-white`}
-            disabled={status === 'LOADING' && !isBroadcasting && !!activeTrackUrl}
           >
             {status === 'LOADING' && !isBroadcasting
               ? <i className="fas fa-circle-notch fa-spin"></i>
