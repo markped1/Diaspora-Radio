@@ -270,11 +270,15 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
           if (!isStreamRef.current) {
             initAudioContext();
           }
-
-          audioRef.current.play().catch(err => {
-            console.warn("Playback failed:", err);
-            setStatus('IDLE');
-          });
+          // Wait for canplay before attempting play
+          const playWhenReady = () => {
+            audioRef.current?.play().catch(err => {
+              console.warn("Playback failed:", err);
+              setStatus('IDLE');
+            });
+            audioRef.current?.removeEventListener('canplay', playWhenReady);
+          };
+          audioRef.current.addEventListener('canplay', playWhenReady, { once: true });
         }
       }
     }
@@ -288,13 +292,26 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
           setStatus('IDLE');
           return;
         }
-        // Only init audio context for local files
-        if (!isStreamRef.current) {
-          initAudioContext();
+        // If still loading (readyState < HAVE_FUTURE_DATA), wait for canplay
+        if (audioRef.current.readyState < 3) {
+          const playWhenReady = () => {
+            if (!isStreamRef.current) initAudioContext();
+            audioRef.current?.play().catch(err => {
+              if (err.name === 'NotAllowedError') {
+                setStatus('IDLE');
+                setErrorMessage('Tap play to start listening');
+                setTimeout(() => setErrorMessage(''), 4000);
+              } else {
+                setStatus('IDLE');
+              }
+            });
+          };
+          audioRef.current.addEventListener('canplay', playWhenReady, { once: true });
+          return;
         }
-
+        // Already loaded — play immediately
+        if (!isStreamRef.current) initAudioContext();
         audioRef.current.play().catch((err) => {
-          // NotAllowedError = browser blocked autoplay — show tap-to-play, don't spin
           if (err.name === 'NotAllowedError') {
             setStatus('IDLE');
             setErrorMessage('Tap play to start listening');
