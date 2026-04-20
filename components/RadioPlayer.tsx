@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Logo from './Logo';
 import {
   isBroadcastActive,
@@ -8,8 +8,6 @@ import {
   stopBroadcast,
   setBroadcastVolume,
 } from '../services/aiDjService';
-import { webSpeechSpeak } from '../services/webSpeechService';
-import { JINGLE_DJ } from '../constants';
 import { dbService } from '../services/dbService';
 import { hasApi } from '../services/apiService';
 
@@ -41,8 +39,6 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   const [duration, setDuration] = useState(0);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const broadcastingRef = useRef(false);
-  const midJingleFiredRef = useRef(false);   // tracks if DJ jingle already played this song
-  const midJingleRunningRef = useRef(false); // prevents double-fire
 
   // Poll broadcast state — debounced to avoid flicker between segments
   useEffect(() => {
@@ -184,28 +180,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       const t = audio.currentTime;
       const d = audio.duration;
       setCurrentTime(t);
-
-      // Mid-song DJ jingle — fires once at 50% of track duration
-      if (
-        d > 10 &&
-        isFinite(d) &&
-        t >= d * 0.5 &&
-        !midJingleFiredRef.current &&
-        !midJingleRunningRef.current &&
-        !isBroadcastActive()
-      ) {
-        midJingleFiredRef.current  = true;
-        midJingleRunningRef.current = true;
-
-        // Duck music, speak jingle, restore
-        const prevVol = audio.volume;
-        audio.volume = Math.max(0, prevVol * 0.15);
-
-        webSpeechSpeak(JINGLE_DJ, { rate: 1.25, pitch: 1.2 }).then(() => {
-          audio.volume = prevVol;
-          midJingleRunningRef.current = false;
-        });
-      }
+      // Mid-song jingle disabled — was causing robotic TTS interruptions
     });
     audio.addEventListener('loadedmetadata', () => setDuration(audio.duration));
     audio.addEventListener('canplay', handleCanPlay);
