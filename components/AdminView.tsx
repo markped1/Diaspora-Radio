@@ -4,7 +4,7 @@ import { dbService } from '../services/dbService';
 import { AdminLog, MediaFile, NewsItem, ListenerReport, SportChannel } from '../types';
 import TvMonitor from './TvMonitor';
 import SportsTv from './SportsTv';
-import { getSharedMedia, hasApi } from '../services/apiService';
+import { getSharedMedia, hasApi, addMediaToCloud } from '../services/apiService';
 
 interface AdminViewProps {
   onRefreshData: () => void;
@@ -152,25 +152,13 @@ const AdminView: React.FC<AdminViewProps> = ({
                 await dbService.updateMedia({ ...localItem, url: data.secure_url, file: undefined });
 
                 // Save to KV so all listeners see it
-                if (hasApi()) {
-                  const cloudItems = await getSharedMedia();
-                  const exists = cloudItems.find(c => c.id === localId);
-                  if (!exists) {
-                    cloudItems.unshift({
-                      id: localId,
-                      name: file.name,
-                      url: data.secure_url,
-                      type: finalType,
-                      timestamp: Date.now(),
-                      likes: 0,
-                    });
-                    await fetch(`${import.meta.env.VITE_API_URL}/media`, {
-                      method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(cloudItems),
-                    });
-                  }
-                }
+                await addMediaToCloud({
+                  id: localId,
+                  name: file.name,
+                  url: data.secure_url,
+                  type: finalType,
+                  timestamp: Date.now(),
+                });
 
                 // Refresh UI to show cloud URL
                 await loadData();

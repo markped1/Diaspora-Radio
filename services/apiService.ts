@@ -55,6 +55,20 @@ export async function deleteSharedMedia(id: string): Promise<void> {
   } catch {}
 }
 
+export async function addMediaToCloud(item: { id: string; name: string; url: string; type: string; timestamp: number }): Promise<void> {
+  if (!hasApi()) return;
+  try {
+    const existing = await getSharedMedia();
+    const alreadyExists = existing.find((m: any) => m.id === item.id);
+    if (!alreadyExists) {
+      const updated = [item, ...existing];
+      await apiFetch('/media', { method: 'PUT', body: JSON.stringify(updated) });
+    }
+  } catch (e) {
+    console.warn('addMediaToCloud failed:', e);
+  }
+}
+
 // ─── Live State ───────────────────────────────────────────────────────────────
 
 export async function getLiveState(): Promise<{ track: any; messages: any[]; tv: any }> {
