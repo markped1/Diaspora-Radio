@@ -294,9 +294,14 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
         }
 
         audioRef.current.play().catch((err) => {
-          console.error("Play failed:", err);
-          setStatus('IDLE');
-          setErrorMessage('');
+          // NotAllowedError = browser blocked autoplay — show tap-to-play, don't spin
+          if (err.name === 'NotAllowedError') {
+            setStatus('IDLE');
+            setErrorMessage('Tap play to start listening');
+            setTimeout(() => setErrorMessage(''), 4000);
+          } else {
+            setStatus('IDLE');
+          }
         });
       } else if (!forcePlaying && !audioRef.current.paused) {
         audioRef.current.pause();
@@ -437,7 +442,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
           }`}>
             {isBroadcasting
               ? (isBroadcastPaused() ? '⏸ BROADCAST PAUSED' : '🔴 LIVE BROADCAST — TAP TO PAUSE')
-              : (activeTrackUrl ? `NOW PLAYING: ${currentTrackName}` : '📻 TAP TO PLAY')}
+              : (activeTrackUrl ? `NOW PLAYING: ${currentTrackName}` : '📻 TAP ▶ TO LISTEN LIVE')}
           </span>
         </div>
 

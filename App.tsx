@@ -105,8 +105,8 @@ const App: React.FC = () => {
             // Admin is playing a cloud track — update listener
             setActiveTrackUrl(live.track.url);
             setCurrentTrackName(live.track.name || '');
-            // Only auto-play if listener has already interacted with the page
-            if (hasInteracted) setIsRadioPlaying(true);
+            // Never force autoplay — let user tap play (required by all browsers except Chrome)
+            // Just update the URL so when they tap play it starts the right track
           } else if (live.track === null) {
             // Admin stopped — stop listener too
             setActiveTrackUrl(null);
@@ -143,8 +143,10 @@ const App: React.FC = () => {
               return merged;
             });
             setSponsoredMedia(prev => {
-              const merged = [...cloudMedia.filter(c => c.type !== 'audio'), ...prev.filter(p => !cloudMedia.find(c => c.id === p.id))];
-              return merged;
+              // Never overwrite the cloud-tv-live item pushed by admin
+              const cloudTvItem = prev.find(m => m.id === 'cloud-tv-live');
+              const merged = [...cloudMedia.filter(c => c.type !== 'audio'), ...prev.filter(p => !cloudMedia.find(c => c.id === p.id) && p.id !== 'cloud-tv-live')];
+              return cloudTvItem ? [cloudTvItem, ...merged] : merged;
             });
           }
         }).catch(() => {});
@@ -152,7 +154,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error("Data fetch error", err);
     }
-  }, [activeTrackId, isRadioPlaying]);
+  }, [activeTrackId]);
 
   // Fetch fresh news from RSS and dump into newsroom + state
   const refreshNews = useCallback(async () => {
