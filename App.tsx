@@ -102,9 +102,13 @@ const App: React.FC = () => {
         getLiveState().then(live => {
           // Admin control: sync track to all listeners
           if (live.track?.url?.startsWith('http')) {
-            // Admin is playing a cloud track — update listener
+            // Admin is playing a cloud track — sync to listener
             setActiveTrackUrl(live.track.url);
             setCurrentTrackName(live.track.name || '');
+            // Auto-play for listeners (role check ensures admin isn't affected)
+            if (role === UserRole.LISTENER) {
+              setIsRadioPlaying(true);
+            }
           } else if (live.track === null) {
             // Admin stopped — only stop listener if they are in listener role
             // Don't stop admin's own local playback
@@ -396,15 +400,27 @@ const App: React.FC = () => {
           <AdminView
             onRefreshData={fetchData} logs={logs} onPlayTrack={(t) => {
               setHasInteracted(true);
-              // Prefer cloud URL if available, fall back to local blob
-              const url = t.url?.startsWith('http') ? t.url : t.url;
               setActiveTrackId(t.id);
-              setActiveTrackUrl(url);
+              setActiveTrackUrl(t.url);
               setCurrentTrackName(cleanTrackName(t.name));
               setIsRadioPlaying(true);
-              // Push to cloud if it's a cloud URL
-              if (hasApi() && url?.startsWith('http')) {
-                setLiveTrack({ url, name: cleanTrackName(t.name) }).catch(() => {});
+              // Push to cloud
+              if (hasApi()) {
+                if (t.url?.startsWith('http')) {
+                  // Cloud URL — push directly
+                  setLiveTrack({ url: t.url, name: cleanTrackName(t.name) }).catch(() => {});
+                } else {
+                  // Local blob — find cloud version by name
+                  getSharedMedia().then(cloudItems => {
+                    const match = cloudItems.find((c: any) =>
+                      c.type === 'audio' && c.url?.startsWith('http') &&
+                      (c.id === t.id || c.name === t.name)
+                    );
+                    if (match) {
+                      setLiveTrack({ url: match.url, name: cleanTrackName(t.name) }).catch(() => {});
+                    }
+                  }).catch(() => {});
+                }
               }
             }}
             isRadioPlaying={isRadioPlaying} onToggleRadio={() => {
