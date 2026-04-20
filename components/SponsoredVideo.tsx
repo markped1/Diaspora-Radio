@@ -19,8 +19,9 @@ const SponsoredVideo: React.FC<SponsoredVideoProps> = ({ video, onEnded, isMuted
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.muted = effectiveMuted;
+      videoRef.current.load(); // Ensure source is loaded correctly
       videoRef.current.play().catch(err => {
-        console.debug('Autoplay suppressed:', err);
+        console.warn('Autoplay suppressed or video error:', err);
       });
     }
   }, [video.url]);

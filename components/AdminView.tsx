@@ -142,7 +142,8 @@ const AdminView: React.FC<AdminViewProps> = ({
               const form = new FormData();
               form.append('file', file);
               form.append('upload_preset', uploadPreset);
-              const resourceType = isAudio ? 'raw' : isVideo ? 'video' : 'image';
+              // CRITICAL: Cloudinary treats audio as 'video' resource type. 'raw' breaks media features.
+              const resourceType = (isAudio || isVideo) ? 'video' : 'image';
               const res = await fetch(
                 `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`,
                 { method: 'POST', body: form, signal: AbortSignal.timeout(60000) }
@@ -167,8 +168,13 @@ const AdminView: React.FC<AdminViewProps> = ({
                 setStatusMsg(`☁️ ${file.name} synced to cloud`);
                 setTimeout(() => setStatusMsg(''), 3000);
               }
+              } else {
+                console.error(`Cloudinary error for ${file.name}:`, data.error?.message || 'Unknown error');
+                setStatusMsg(`❌ Cloud upload failed for ${file.name}`);
+              }
             } catch (err) {
               console.warn(`Background cloud upload failed for ${file.name}:`, err);
+              setStatusMsg(`❌ Cloud sync error: check your Internet`);
             }
           };
 

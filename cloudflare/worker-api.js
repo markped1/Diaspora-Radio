@@ -43,14 +43,53 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // Health check — shows KV status
+    // Health check — shows KV and R2 status
     if (path === '/' || path === '') {
-      return json({ status: 'NDR API OK', kv: env.KV ? 'connected' : 'missing — add KV binding named KV in worker settings' });
+      return json({
+        status: 'NDR API OK',
+        kv: env.KV ? 'connected' : 'missing — add KV binding named KV',
+        r2: env.MEDIA ? 'connected' : 'missing — add R2 binding named MEDIA'
+      });
     }
 
     if (path === '/live' && request.method === 'GET') {
       const s = await getState(env);
       return json({ track: s.track ?? null, messages: s.messages ?? [], tv: s.tv ?? null });
+    }
+    if (path === '/media/upload' && request.method === 'POST') {
+      if (!env.MEDIA) return json({ error: 'R2 not bound' }, 500);
+      try {
+        const formData = await request.formData();
+        const file = formData.get('file');
+        const name = formData.get('name');
+        const type = formData.get('type');
+        if (!file || !name) return json({ error: 'Missing file/name' }, 400);
+
+        const id = Math.random().toString(36).substr(2, 9);
+        await env.MEDIA.put(id, file, { httpMetadata: { contentType: (file as File).type } });
+        
+        const url = `${url.origin}/media/file/${id}`;
+        const item = { id, name, url, type, timestamp: Date.now() };
+        
+        const s = await getState(env);
+        s.media = [item, ...(s.media || [])];
+        await setState(env, s);
+
+        return json({ ok: true, item });
+      } catch (e) {
+        return json({ error: e.message }, 500);
+      }
+    }
+    if (path.startsWith('/media/file/')) {
+      if (!env.MEDIA) return json({ error: 'R2 not bound' }, 500);
+      const id = path.replace('/media/file/', '');
+      const object = await env.MEDIA.get(id);
+      if (!object) return json({ error: 'File not found' }, 404);
+      const headers = new Headers();
+      object.writeHttpMetadata(headers);
+      headers.set('etag', object.httpEtag);
+      headers.append('Access-Control-Allow-Origin', '*');
+      return new Response(object.body, { headers });
     }
     if (path === '/live/track' && request.method === 'PUT') {
       const body = await request.json();

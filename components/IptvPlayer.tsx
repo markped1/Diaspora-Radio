@@ -46,6 +46,7 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
 
     const doPlay = () => {
       video.muted = true; // must be muted for autoplay on all browsers
+      video.playsInline = true;
       video.play().catch(err => {
         if (err.name === 'NotAllowedError') {
           setStatus('blocked'); // show tap-to-play
@@ -59,12 +60,18 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
         enableWorker: true,
         lowLatencyMode: true,
         maxBufferLength: 30,
+        backBufferLength: 60,
+        nudgeOffset: 0.1,
+        nudgeMaxRetries: 10,
         xhrSetup: (xhr) => {
-          // Don't set credentials — avoids CORS preflight issues
           xhr.withCredentials = false;
         },
       });
       hlsRef.current = hls;
+      
+      // CRITICAL: Set crossOrigin for HLS streams to allow data access
+      video.crossOrigin = 'anonymous';
+
       hls.loadSource(url);
       hls.attachMedia(video);
 
@@ -74,13 +81,21 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
 
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (data.fatal) {
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            // Try to recover
-            hls.startLoad();
-          } else {
-            setStatus('error');
-            setErrorMsg('Stream unavailable or CORS blocked');
-            onError?.();
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.warn('HLS Network error, trying to recover...', data);
+              hls.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.warn('HLS Media error, trying to recover...', data);
+              hls.recoverMediaError();
+              break;
+            default:
+              setStatus('error');
+              setErrorMsg('Stream unavailable or CORS blocked');
+              hls.destroy();
+              onError?.();
+              break;
           }
         }
       });
@@ -89,12 +104,16 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
       // Safari — native HLS
       video.src = url;
       video.muted = true;
+      video.playsInline = true;
+      video.crossOrigin = 'anonymous';
       video.load();
       if (autoPlay) doPlay();
     } else {
-      // Non-HLS direct URL
+      // Non-HLS direct URL (MP4, WebM)
       video.src = url;
       video.muted = true;
+      video.playsInline = true;
+      video.crossOrigin = 'anonymous';
       video.load();
       if (autoPlay) doPlay();
     }
