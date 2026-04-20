@@ -9,7 +9,7 @@ import {
   setBroadcastVolume,
 } from '../services/aiDjService';
 import { dbService } from '../services/dbService';
-import { hasApi } from '../services/apiService';
+import { hasApi, getLiveState } from '../services/apiService';
 
 interface RadioPlayerProps {
   onStateChange: (isPlaying: boolean) => void;
@@ -308,7 +308,6 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     if (!streamUrl && hasApi()) {
       try {
         setStatus('LOADING');
-        const { getLiveState } = await import('../services/apiService');
         const live = await getLiveState();
         if (live?.track?.url?.startsWith('http')) {
           streamUrl = live.track.url;
