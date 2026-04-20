@@ -20,6 +20,7 @@ const App: React.FC = () => {
   const [audioPlaylist, setAudioPlaylist] = useState<MediaFile[]>([]);
   const [adminMessages, setAdminMessages] = useState<AdminMessage[]>([]);
   const [reports, setReports] = useState<ListenerReport[]>([]);
+  const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'error' | 'none'>('none');
 
   const [isRadioPlaying, setIsRadioPlaying] = useState(false);
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
@@ -99,17 +100,26 @@ const App: React.FC = () => {
 
       // Sync cloud state in background — non-blocking, doesn't slow down UI
       if (hasApi()) {
+        if (apiStatus === 'none') setApiStatus('checking');
         getLiveState().then(live => {
+          setApiStatus('connected');
           // Sync cloud track to LISTENERS only — Admin is the source of truth
           if (role === UserRole.LISTENER) {
             if (live.track?.url?.startsWith('http')) {
               setActiveTrackUrl(live.track.url);
               setCurrentTrackName(live.track.name || '');
+              // Auto-play if user has already interacted (to satisfy browser policies)
+              if (hasInteracted && !isRadioPlaying) {
+                setIsRadioPlaying(true);
+              }
             } else if (live.track === null) {
               setActiveTrackUrl(null);
               setCurrentTrackName('');
               setIsRadioPlaying(false);
             }
+          }
+          if (live.stream && role === UserRole.LISTENER) {
+            dbService.setLiveStreamUrl(live.stream);
           }
           if (live.messages?.length) setAdminMessages(live.messages);
           // Sync live TV to sponsored media so ListenerView shows it
@@ -132,7 +142,10 @@ const App: React.FC = () => {
             // Admin took TV offline
             setSponsoredMedia(prev => prev.filter(m => m.id !== 'cloud-tv-live'));
           }
-        }).catch(() => {});
+        }).catch(err => {
+          console.error("API Error:", err);
+          setApiStatus('error');
+        });
 
         getSharedMedia().then(cloudMedia => {
           if (cloudMedia.length > 0) {
@@ -274,8 +287,8 @@ const App: React.FC = () => {
     const interactionHandler = () => setHasInteracted(true);
     window.addEventListener('click', interactionHandler, { once: true });
 
-    // Poll cloud state every 30 seconds so listeners stay in sync with admin
-    const syncInterval = hasApi() ? setInterval(() => fetchData(), 30000) : null;
+    // Poll cloud state every 10 seconds so listeners stay in sync with admin
+    const syncInterval = hasApi() ? setInterval(() => fetchData(), 10000) : null;
 
     return () => {
       window.removeEventListener('click', interactionHandler);
@@ -392,15 +405,29 @@ const App: React.FC = () => {
           />
         ) : (
           <AdminView
+            apiStatus={apiStatus}
             onRefreshData={fetchData} logs={logs} onPlayTrack={(t) => {
               setHasInteracted(true);
               setActiveTrackId(t.id);
               setActiveTrackUrl(t.url);
               setCurrentTrackName(cleanTrackName(t.name));
               setIsRadioPlaying(true);
-              // Push to cloud if it's a cloud URL
-              if (hasApi() && t.url?.startsWith('http')) {
-                setLiveTrack({ url: t.url, name: cleanTrackName(t.name) }).catch(() => {});
+              if (hasApi()) {
+                if (t.url?.startsWith('http')) {
+                  // Cloud URL — push directly to listeners
+                  setLiveTrack({ url: t.url, name: cleanTrackName(t.name) }).catch(() => {});
+                } else {
+                  // Local blob — find matching cloud URL by name or id
+                  getSharedMedia().then(cloudItems => {
+                    const match = cloudItems.find((c: any) =>
+                      c.type === 'audio' && c.url?.startsWith('http') &&
+                      (c.id === t.id || c.name === t.name)
+                    );
+                    if (match) {
+                      setLiveTrack({ url: match.url, name: cleanTrackName(t.name) }).catch(() => {});
+                    }
+                  }).catch(() => {});
+                }
               }
             }}
             isRadioPlaying={isRadioPlaying} onToggleRadio={() => {

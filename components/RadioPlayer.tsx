@@ -10,6 +10,7 @@ import {
 } from '../services/aiDjService';
 import { dbService } from '../services/dbService';
 import { hasApi, getLiveState } from '../services/apiService';
+import { DEFAULT_STREAM_URL } from '../constants';
 
 interface RadioPlayerProps {
   onStateChange: (isPlaying: boolean) => void;
@@ -178,6 +179,9 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     if (!forcePlaying && !audio.paused) {
       audio.pause();
       loadingUrlRef.current = null;
+    } else if (forcePlaying && audio.paused && activeTrackUrl) {
+      // Auto-resume if forcePlaying is toggled back to true and we have a track
+      audio.play().catch(() => {});
     }
   }, [forcePlaying]);
 
@@ -204,16 +208,27 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     }
 
     // Find stream URL
-    let streamUrl = activeTrackUrl || dbService.getLiveStreamUrl() || null;
+    let streamUrl = activeTrackUrl || dbService.getLiveStreamUrl() || DEFAULT_STREAM_URL;
+    
+    console.log('📻 RadioPlayer: Attempting to play stream:', { 
+      activeTrackUrl, 
+      localFallback: dbService.getLiveStreamUrl(), 
+      globalDefault: DEFAULT_STREAM_URL,
+      finalUrl: streamUrl 
+    });
+
     if (!streamUrl && hasApi()) {
       try {
         setStatus('LOADING');
         const live = await getLiveState();
         if (live?.track?.url?.startsWith('http')) streamUrl = live.track.url;
-      } catch {}
+      } catch (e) {
+        console.error('RadioPlayer sync failed:', e);
+      }
     }
 
-    if (!streamUrl) {
+    if (!streamUrl || streamUrl === '') {
+      console.error('RadioPlayer: No valid stream URL found!');
       setStatus('IDLE');
       setErrorMessage('No stream available. Admin needs to start playing.');
       setTimeout(() => setErrorMessage(''), 3000);
@@ -275,7 +290,12 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
           <span className={`text-[7px] font-black uppercase tracking-widest line-clamp-1 ${isBroadcasting ? 'text-red-700' : 'text-green-800'}`}>
             {isBroadcasting
               ? (isBroadcastPaused() ? '⏸ BROADCAST PAUSED' : '🔴 LIVE BROADCAST — TAP TO PAUSE')
-              : (activeTrackUrl ? `NOW PLAYING: ${currentTrackName}` : '📻 TAP ▶ TO LISTEN LIVE')}
+              : (activeTrackUrl ? (
+                  <span className="flex items-center justify-center">
+                    {activeTrackUrl.startsWith('http') && <span className="w-1 h-1 bg-red-500 rounded-full mr-1.5 animate-pulse shrink-0"></span>}
+                    {activeTrackUrl.startsWith('http') ? 'LIVE ON AIR: ' : 'NOW PLAYING: '}{currentTrackName}
+                  </span>
+                ) : '📻 TAP ▶ TO LISTEN LIVE')}
           </span>
         </div>
 

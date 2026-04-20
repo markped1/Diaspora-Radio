@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f0fff4; /* Light Green Background */
+    color: #008751; /* Primary Green Text */
+    overflow-x: hidden;
+}
+
+.glass-card {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(15px);
+    border: 1px solid rgba(0, 135, 81, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 135, 81, 0.05);
+}
+
+.gradient-bg {
+    background: linear-gradient(135deg, #008751 0%, #00a86b 50%, #008751 100%);
+}
+
+@keyframes scaleIn {
+    from { transform: scale(0.9); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.animate-scale-in {
+    animation: scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+::selection {
+    background: #008751;
+    color: white;
+}
+
+* {
+    color: inherit;
+}

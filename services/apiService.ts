@@ -78,13 +78,20 @@ export async function addMediaToCloud(item: { id: string; name: string; url: str
 
 // ─── Live State ───────────────────────────────────────────────────────────────
 
-export async function getLiveState(): Promise<{ track: any; messages: any[]; tv: any }> {
-  if (!hasApi()) return { track: null, messages: [], tv: null };
+export async function getLiveState(): Promise<{ track: any; stream: string | null; messages: any[]; tv: any }> {
+  if (!hasApi()) return { track: null, stream: null, messages: [], tv: null };
   try {
     return await apiFetch('/live');
   } catch {
-    return { track: null, messages: [], tv: null };
+    return { track: null, stream: null, messages: [], tv: null };
   }
+}
+
+export async function setSharedStreamUrl(url: string | null): Promise<void> {
+  if (!hasApi()) return;
+  try {
+    await apiFetch('/live/stream', { method: 'PUT', body: JSON.stringify({ url }) });
+  } catch {}
 }
 
 export async function setLiveTrack(track: { url: string; name: string } | null): Promise<void> {

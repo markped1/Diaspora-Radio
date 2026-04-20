@@ -15,7 +15,7 @@ function json(data, status = 200) {
   });
 }
 
-const EMPTY = () => ({ track: null, messages: [], tv: null, media: [], news: [] });
+const EMPTY = () => ({ track: null, stream: null, messages: [], tv: null, media: [], news: [] });
 const KV_KEY = 'ndr_state';
 
 async function getState(env) {
@@ -54,7 +54,12 @@ export default {
 
     if (path === '/live' && request.method === 'GET') {
       const s = await getState(env);
-      return json({ track: s.track ?? null, messages: s.messages ?? [], tv: s.tv ?? null });
+      return json({ 
+        track: s.track ?? null, 
+        stream: s.stream ?? null, 
+        messages: s.messages ?? [], 
+        tv: s.tv ?? null 
+      });
     }
     if (path === '/media/upload' && request.method === 'POST') {
       if (!env.MEDIA) return json({ error: 'R2 not bound' }, 500);
@@ -66,7 +71,7 @@ export default {
         if (!file || !name) return json({ error: 'Missing file/name' }, 400);
 
         const id = Math.random().toString(36).substr(2, 9);
-        await env.MEDIA.put(id, file, { httpMetadata: { contentType: (file as File).type } });
+        await env.MEDIA.put(id, file, { httpMetadata: { contentType: file.type } });
         
         const url = `${url.origin}/media/file/${id}`;
         const item = { id, name, url, type, timestamp: Date.now() };
@@ -95,6 +100,13 @@ export default {
       const body = await request.json();
       const s = await getState(env);
       s.track = body;
+      await setState(env, s);
+      return json({ ok: true });
+    }
+    if (path === '/live/stream' && request.method === 'PUT') {
+      const body = await request.json(); // Expecting { url: string } or null
+      const s = await getState(env);
+      s.stream = body?.url ?? body; 
       await setState(env, s);
       return json({ ok: true });
     }

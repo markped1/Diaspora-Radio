@@ -4,7 +4,8 @@ import { dbService } from '../services/dbService';
 import { AdminLog, MediaFile, NewsItem, ListenerReport, SportChannel } from '../types';
 import TvMonitor from './TvMonitor';
 import SportsTv from './SportsTv';
-import { getSharedMedia, hasApi, addMediaToCloud } from '../services/apiService';
+import { getSharedMedia, hasApi, addMediaToCloud, setSharedStreamUrl } from '../services/apiService';
+import { DEFAULT_STREAM_URL } from '../constants';
 
 interface AdminViewProps {
   onRefreshData: () => void;
@@ -13,6 +14,7 @@ interface AdminViewProps {
   onPlayTrack: (track: MediaFile) => void;
   isRadioPlaying: boolean;
   onToggleRadio: () => void;
+  apiStatus: 'checking' | 'connected' | 'error' | 'none';
   currentTrackName: string;
   isShuffle: boolean;
   onToggleShuffle: () => void;
@@ -34,6 +36,7 @@ const AdminView: React.FC<AdminViewProps> = ({
   onPlayTrack, 
   isRadioPlaying, 
   onToggleRadio,
+  apiStatus,
   currentTrackName,
   isShuffle,
   onToggleShuffle,
@@ -55,7 +58,7 @@ const AdminView: React.FC<AdminViewProps> = ({
   const [reports, setReports] = useState<ListenerReport[]>([]);
   const [voiceMsg, setVoiceMsg] = useState('');
   const [nextSyncIn, setNextSyncIn] = useState<string>('');
-  const [liveStreamUrl, setLiveStreamUrlState] = useState(() => dbService.getLiveStreamUrl());
+  const [liveStreamUrl, setLiveStreamUrlState] = useState(() => dbService.getLiveStreamUrl() || DEFAULT_STREAM_URL);
   const [adInterval, setAdInterval] = useState(() => Number(localStorage.getItem('ndr_ad_interval') || 3));
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -287,6 +290,28 @@ const AdminView: React.FC<AdminViewProps> = ({
       <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileUpload} />
       <input type="file" ref={folderInputRef} className="hidden" webkitdirectory="true" directory="true" multiple onChange={handleFileUpload} />
 
+      <div className="bg-white p-6 rounded-2xl border border-green-100 shadow-sm flex items-center justify-between mx-1">
+        <div className="flex flex-col">
+          <h1 className="text-xl font-black tracking-tighter text-green-900 leading-none">COMMAND CENTER</h1>
+          <div className="flex items-center space-x-2 mt-2">
+            <span className="text-[7px] text-gray-400 font-bold uppercase tracking-widest leading-none">AUTHORIZED ADMIN ONLY</span>
+            <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-[#008751]/5 border border-green-100">
+              <span className={`w-1 h-1 rounded-full ${
+                apiStatus === 'connected' ? 'bg-green-500 shadow-sm' : 
+                apiStatus === 'error' ? 'bg-red-500 animate-pulse' : 
+                'bg-yellow-500'
+              }`}></span>
+              <span className="text-[6px] font-black uppercase text-green-700">
+                Backend: {apiStatus === 'connected' ? 'CONNECTED' : apiStatus === 'error' ? 'OFFLINE' : 'SYNCING'}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="w-12 h-12 bg-[#008751] rounded-2xl flex items-center justify-center shadow-lg transform -rotate-12">
+          <i className="fas fa-crown text-white text-xl"></i>
+        </div>
+      </div>
+
       <div className="flex items-center space-x-1.5 px-0.5">
         <div className="flex-grow flex space-x-1 bg-[#008751]/10 p-1 rounded-xl border border-green-200 shadow-sm overflow-x-auto no-scrollbar">
           {(['command', 'bulletin', 'tv', 'sports', 'media', 'inbox', 'logs'] as Tab[]).map(t => (
@@ -325,10 +350,10 @@ const AdminView: React.FC<AdminViewProps> = ({
           <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-sm space-y-2">
             <div className="flex items-center space-x-2">
               <i className="fas fa-broadcast-tower text-blue-500 text-sm"></i>
-              <h3 className="text-[8px] font-black uppercase tracking-widest text-blue-700">Listener Stream URL</h3>
+              <h3 className="text-[8px] font-black uppercase tracking-widest text-blue-700">Station Broadcast Override</h3>
             </div>
             <p className="text-[6px] text-gray-400 leading-relaxed">
-              Set a live stream URL that ALL listeners hear when they tap play. Use Zeno.fm, Radio.co, or any .mp3/.m3u8 stream. This is how listeners hear the same music as you.
+              This station defaults to <strong>{DEFAULT_STREAM_URL}</strong>. Use this box only if you need to override the main broadcast with a temporary live feed (e.g. Zeno.fm).
             </p>
             <input
               type="url"
@@ -340,7 +365,9 @@ const AdminView: React.FC<AdminViewProps> = ({
             <div className="flex space-x-2">
               <button
                 onClick={() => {
-                  dbService.setLiveStreamUrl(liveStreamUrl.trim());
+                  const url = liveStreamUrl.trim();
+                  dbService.setLiveStreamUrl(url);
+                  if (hasApi()) setSharedStreamUrl(url).catch(() => {});
                   setStatusMsg('✅ Stream URL saved — listeners will hear this when they tap play');
                   setTimeout(() => setStatusMsg(''), 3000);
                 }}
