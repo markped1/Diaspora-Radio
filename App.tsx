@@ -31,6 +31,8 @@ const App: React.FC = () => {
   const [hasInteracted, setHasInteracted] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<string>("Global");
 
+  const roleRef = useRef(role);
+  useEffect(() => { roleRef.current = role; }, [role]);
   const isSyncingRef = useRef(false);
   const lastBroadcastMarkerRef = useRef<string>("");
   const wasPlayingBeforeBroadcastRef = useRef(false);
@@ -105,14 +107,13 @@ const App: React.FC = () => {
             // Admin is playing a cloud track — sync to listener
             setActiveTrackUrl(live.track.url);
             setCurrentTrackName(live.track.name || '');
-            // Auto-play for listeners (role check ensures admin isn't affected)
-            if (role === UserRole.LISTENER) {
+            // Auto-play for listeners (roleRef check ensures admin isn't affected)
+            if (roleRef.current === UserRole.LISTENER) {
               setIsRadioPlaying(true);
             }
           } else if (live.track === null) {
-            // Admin stopped — only stop listener if they are in listener role
-            // Don't stop admin's own local playback
-            if (role === UserRole.LISTENER) {
+            // Admin stopped — only stop listener, not admin's own playback
+            if (roleRef.current === UserRole.LISTENER) {
               setActiveTrackUrl(null);
               setCurrentTrackName('');
               setIsRadioPlaying(false);
@@ -159,7 +160,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error("Data fetch error", err);
     }
-  }, [activeTrackId, role]);
+  }, [activeTrackId]);
 
   // Fetch fresh news from RSS and dump into newsroom + state
   const refreshNews = useCallback(async () => {
