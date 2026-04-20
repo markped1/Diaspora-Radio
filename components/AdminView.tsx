@@ -118,78 +118,86 @@ const AdminView: React.FC<AdminViewProps> = ({
         let finalType: 'audio' | 'video' | 'image' = isAudio ? 'audio' : (isVideo ? 'video' : 'image');
         if (!isAudio && !isVideo && !isImage) continue;
 
-        setStatusMsg(`Uploading ${count + 1} of ${files.length}...`);
+        setStatusMsg(`Saving ${count + 1} of ${files.length}: ${file.name}`);
 
-        let fileUrl = '';
-        let fileBlob: File | undefined = file;
-
-        if (useCloud) {
-          try {
-            const form = new FormData();
-            form.append('file', file);
-            form.append('upload_preset', uploadPreset);
-            // Use 'raw' for audio (mp3/wav/etc), 'image' for images, 'video' for video
-            const resourceType = isAudio ? 'raw' : isVideo ? 'video' : 'image';
-            const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`, {
-              method: 'POST',
-              body: form,
-              signal: AbortSignal.timeout(30000), // 30s for file upload
-            });
-            const data = await res.json();
-            if (data.secure_url) {
-              fileUrl = data.secure_url;
-              fileBlob = undefined;
-              setStatusMsg(`✅ Uploaded: ${file.name}`);
-            } else {
-              console.warn('Cloudinary error:', data);
-              setStatusMsg(`⚠️ Cloud upload failed for ${file.name}, saving locally`);
-            }
-          } catch (err) {
-            console.warn('Cloudinary upload failed, saving locally:', err);
-          }
-        }
-
-        await dbService.addMedia({
-          id: 'local-' + Math.random().toString(36).substr(2, 9),
+        // Step 1: Save locally IMMEDIATELY so admin can use it right away
+        const localId = 'local-' + Math.random().toString(36).substr(2, 9);
+        const localItem = {
+          id: localId,
           name: file.name,
-          url: fileUrl,
-          file: fileBlob,
+          url: '',
+          file: file,
           type: finalType,
           timestamp: Date.now(),
           likes: 0
-        });
-
-        // If uploaded to cloud, also save to KV so all devices see it
-        if (fileUrl && hasApi()) {
-          try {
-            const cloudItems = await getSharedMedia();
-            cloudItems.unshift({
-              id: 'cloud-' + Date.now(),
-              name: file.name,
-              url: fileUrl,
-              type: finalType,
-              timestamp: Date.now(),
-              likes: 0,
-            });
-            await fetch(`${import.meta.env.VITE_API_URL}/media`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(cloudItems),
-            });
-          } catch {}
-        }
-
+        };
+        await dbService.addMedia(localItem);
         count++;
+
+        // Step 2: Upload to cloud in background (non-blocking)
+        if (useCloud) {
+          const uploadToCloud = async () => {
+            try {
+              const form = new FormData();
+              form.append('file', file);
+              form.append('upload_preset', uploadPreset);
+              const resourceType = isAudio ? 'raw' : isVideo ? 'video' : 'image';
+              const res = await fetch(
+                `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`,
+                { method: 'POST', body: form, signal: AbortSignal.timeout(60000) }
+              );
+              const data = await res.json();
+              if (data.secure_url) {
+                // Update local record with cloud URL
+                await dbService.updateMedia({ ...localItem, url: data.secure_url, file: undefined });
+
+                // Save to KV so all listeners see it
+                if (hasApi()) {
+                  const cloudItems = await getSharedMedia();
+                  const exists = cloudItems.find(c => c.id === localId);
+                  if (!exists) {
+                    cloudItems.unshift({
+                      id: localId,
+                      name: file.name,
+                      url: data.secure_url,
+                      type: finalType,
+                      timestamp: Date.now(),
+                      likes: 0,
+                    });
+                    await fetch(`${import.meta.env.VITE_API_URL}/media`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(cloudItems),
+                    });
+                  }
+                }
+
+                // Refresh UI to show cloud URL
+                await loadData();
+                await loadCloudMedia();
+                setStatusMsg(`☁️ ${file.name} synced to cloud`);
+                setTimeout(() => setStatusMsg(''), 3000);
+              }
+            } catch (err) {
+              console.warn(`Background cloud upload failed for ${file.name}:`, err);
+            }
+          };
+
+          // Fire and forget — don't await
+          uploadToCloud();
+        }
       }
-      setStatusMsg(useCloud
-        ? `✅ ${count} files uploaded to cloud — all listeners can access them`
-        : `✅ ${count} files saved locally. Add Cloudinary keys to share with listeners.`
-      );
+
+      setStatusMsg(`✅ ${count} files saved. ${useCloud ? 'Syncing to cloud in background...' : 'Add Cloudinary keys to sync to cloud.'}`);
       onRefreshData();
       await loadData();
-      if (useCloud) await loadCloudMedia(); // refresh cloud library display
-    } catch (error) { setStatusMsg('Import Error.'); }
-    finally { setIsProcessing(false); setTimeout(() => setStatusMsg(''), 6000); if (e.target) e.target.value = ''; }
+    } catch (error) {
+      setStatusMsg('Import Error.');
+    } finally {
+      setIsProcessing(false);
+      setTimeout(() => setStatusMsg(''), 6000);
+      if (e.target) e.target.value = '';
+    }
   };
 
   const handleManualBroadcast = async (item: NewsItem) => {
