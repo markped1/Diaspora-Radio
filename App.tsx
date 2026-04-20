@@ -100,9 +100,17 @@ const App: React.FC = () => {
       // Sync cloud state in background — non-blocking, doesn't slow down UI
       if (hasApi()) {
         getLiveState().then(live => {
-          if (live.track?.url?.startsWith('http') && !isRadioPlaying) {
+          // Admin control: sync track to all listeners regardless of play state
+          if (live.track?.url?.startsWith('http')) {
+            // Admin is playing — update listener track
             setActiveTrackUrl(live.track.url);
             setCurrentTrackName(live.track.name || '');
+            setIsRadioPlaying(true);
+          } else if (live.track === null) {
+            // Admin stopped — stop listener too
+            setActiveTrackUrl(null);
+            setCurrentTrackName('');
+            setIsRadioPlaying(false);
           }
           if (live.messages?.length) setAdminMessages(live.messages);
         }).catch(() => {});
@@ -350,7 +358,12 @@ const App: React.FC = () => {
         ) : (
           <AdminView
             onRefreshData={fetchData} logs={logs} onPlayTrack={(t) => { setHasInteracted(true); setActiveTrackId(t.id); setActiveTrackUrl(t.url); setCurrentTrackName(cleanTrackName(t.name)); setIsRadioPlaying(true); }}
-            isRadioPlaying={isRadioPlaying} onToggleRadio={() => setIsRadioPlaying(!isRadioPlaying)}
+            isRadioPlaying={isRadioPlaying} onToggleRadio={() => {
+              const stopping = isRadioPlaying;
+              setIsRadioPlaying(!isRadioPlaying);
+              // When admin stops — push null to KV so all listeners stop
+              if (stopping && hasApi()) setLiveTrack(null).catch(() => {});
+            }}
             currentTrackName={currentTrackName} isShuffle={isShuffle} onToggleShuffle={() => setIsShuffle(!isShuffle)}
             onPlayAll={handlePlayAll} onSkipNext={handlePlayNext}
             onPushBroadcast={handlePushBroadcast} onPlayJingle={handlePlayJingle}

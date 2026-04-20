@@ -136,126 +136,112 @@ const ListenerView: React.FC<ListenerViewProps> = ({
         <div className="absolute top-0 right-0 w-16 h-16 bg-green-50/50 rounded-full -mr-8 -mt-8"></div>
       </div>
 
-      {/* 2. NEWS TICKER */}
-      <section className="bg-[#008751]/5 rounded-xl border border-[#008751]/10 shadow-inner h-8 flex items-center overflow-hidden">
-        <div className="flex whitespace-nowrap animate-marquee items-center">
-          <span className="text-[8px] font-black text-[#008751] uppercase px-8 tracking-widest inline-block">{CHANNEL_INTRO}</span>
-          {adminMessages.map((msg, i) => (
-            <span key={`admin-${i}`} className="text-[8px] text-red-600 font-black uppercase px-8 flex items-center inline-block">
-               <i className="fas fa-bullhorn mr-2 animate-bounce"></i> {msg.text}
-               <span className="ml-8 text-green-300">|</span>
-            </span>
-          ))}
-          {news.map((n, i) => (
-            <span key={`ticker-${i}`} className="text-[8px] text-green-800 font-bold uppercase px-8 flex items-center inline-block">
-              <span className="w-1.5 h-1.5 bg-red-500 rounded-full mr-2 shrink-0 animate-pulse"></span>
-              {n.title}
-              <span className="ml-8 text-green-300">|</span>
-            </span>
-          ))}
-          <span className="text-[8px] font-black text-[#008751] uppercase px-8 tracking-widest inline-block">{CHANNEL_INTRO}</span>
-        </div>
-      </section>
+      {/* 3. NDR TV */}
+      <section className="space-y-0">
+        {/* NDR TV Monitor */}
+        <div className="bg-black overflow-hidden shadow-2xl" style={{ borderRadius: 0 }}>
 
-      {/* 3. SPONSORED HIGHLIGHTS */}
-      <section className="space-y-1">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-[7px] font-black uppercase text-green-600/40 tracking-[0.2em]">Sponsored Highlights</h3>
-          {currentAd && currentAd.type !== 'image' && (
-            <button
-              onClick={handleTvAudioToggle}
-              className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[6px] font-black uppercase border transition-all ${
-                tvAudioOn
-                  ? 'bg-red-500 text-white border-red-400'
-                  : 'bg-white text-green-700 border-green-200'
-              }`}
-            >
-              <i className={`fas ${tvAudioOn ? 'fa-volume-up' : 'fa-volume-mute'} text-[8px]`}></i>
-              <span>{tvAudioOn ? 'TV Audio On' : 'TV Muted'}</span>
-            </button>
-          )}
-        </div>
-        <div className="min-h-[276px] relative">
-          {currentAd ? (
-            <div style={{ borderRadius: 0, height: '276px', width: '100%' }} className="overflow-hidden border border-green-100 shadow-md animate-scale-in relative">
-              {currentAd.type === 'image' ? (
-                <img src={currentAd.url} className="w-full h-full object-cover" alt="ad" />
-              ) : currentAd.type === 'iptv' ? (
-                <IptvPlayer
-                  url={currentAd.url}
-                  muted={!tvAudioOn}
-                  autoPlay
-                  className="w-full h-full object-contain"
-                />
-              ) : currentAd.type === 'youtube' && currentAd.url.includes('youtube.com/embed') ? (
-                <iframe
-                  key={`${currentAd.id}-${tvAudioOn}`}
-                  src={tvAudioOn
-                    ? currentAd.url
-                    : currentAd.url.includes('?')
-                      ? currentAd.url + '&mute=1'
-                      : currentAd.url + '?mute=1'
-                  }
-                  className="w-full h-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  title={currentAd.name}
-                />
-              ) : currentAd.type === 'youtube' ? (
-                /* Sports stream URL — show watch button instead of broken iframe */
-                <div className="w-full h-full bg-gray-900 flex flex-col items-center justify-center space-y-3 p-4">
-                  <span className="text-4xl">⚽</span>
-                  <p className="text-[8px] font-black text-white uppercase text-center">Live Match Available</p>
-                  <p className="text-[6px] text-gray-400 text-center truncate px-4">{currentAd.url.replace('https://', '')}</p>
-                  <button
-                    onClick={() => window.open(currentAd.url, '_blank')}
-                    className="bg-red-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center space-x-2 shadow-lg active:scale-95">
-                    <i className="fas fa-play text-sm"></i>
-                    <span>Watch Live Match</span>
-                  </button>
-                  <p className="text-[6px] text-gray-500 text-center">Opens in your browser — streams play fully</p>
-                </div>
-              ) : (
-                <SponsoredVideo video={currentAd} onEnded={nextAd} isMutedByRadio={!tvAudioOn} />
-              )}
+          {/* ── TOP BAR: NDRtv + LIVE dot ── */}
+          <div className="bg-gray-950 px-3 py-1.5 flex items-center justify-between border-b border-gray-800">
+            <span className="text-[11px] font-black text-white tracking-tight">
+              <span className="text-red-500">NDR</span>tv
+            </span>
+            {currentAd ? (
+              <div className="flex items-center space-x-1">
+                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                <span className="text-[6px] font-black text-red-400 uppercase tracking-widest">Live</span>
+              </div>
+            ) : (
+              <span className="text-[6px] font-black text-gray-600 uppercase tracking-widest">Off Air</span>
+            )}
+          </div>
 
-              {/* ── LIVE MONITOR TICKER — green bg, white text, Nigerian flag ── */}
-              <div className="absolute bottom-0 inset-x-0 bg-[#008751] flex items-center overflow-hidden" style={{ height: '22px' }}>
-                {/* Nigerian flag */}
-                <div className="shrink-0 flex h-full border-r border-green-600" style={{ width: '28px' }}>
-                  <div className="flex-1 bg-[#008751]"></div>
-                  <div className="flex-1 bg-white"></div>
-                  <div className="flex-1 bg-[#008751]"></div>
-                </div>
-                {/* Scrolling text */}
-                <div className="flex-1 overflow-hidden h-full flex items-center">
-                  <div className="flex whitespace-nowrap animate-tv-ticker items-center">
-                    <span className="text-[7px] font-black text-white uppercase tracking-widest px-4">{APP_NAME} — {CHANNEL_INTRO}</span>
-                    {adminMessages.map((msg, i) => (
-                      <span key={`tv-admin-${i}`} className="text-[7px] text-yellow-300 font-black uppercase px-4 flex items-center">
-                        <i className="fas fa-bullhorn mr-1"></i>{msg.text}
-                        <span className="ml-4 text-green-400">◆</span>
-                      </span>
-                    ))}
-                    {news.map((n, i) => (
-                      <span key={`tv-news-${i}`} className="text-[7px] text-white font-bold uppercase px-4 flex items-center">
-                        <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full mr-2 shrink-0"></span>
-                        {n.title}
-                        <span className="ml-4 text-green-400">◆</span>
-                      </span>
-                    ))}
-                    {/* Duplicate for seamless loop */}
-                    <span className="text-[7px] font-black text-white uppercase tracking-widest px-4">{APP_NAME} — {CHANNEL_INTRO}</span>
+          {/* ── SCREEN ── */}
+          <div className="relative bg-black" style={{ height: '276px' }}>
+            {currentAd ? (
+              <>
+                {currentAd.type === 'image' ? (
+                  <img src={currentAd.url} className="w-full h-full object-cover" alt="ad" />
+                ) : currentAd.type === 'iptv' ? (
+                  <IptvPlayer url={currentAd.url} muted={!tvAudioOn} autoPlay className="w-full h-full object-contain" />
+                ) : currentAd.type === 'youtube' && currentAd.url.includes('youtube.com/embed') ? (
+                  <iframe
+                    key={`${currentAd.id}-${tvAudioOn}`}
+                    src={tvAudioOn ? currentAd.url : currentAd.url.includes('?') ? currentAd.url + '&mute=1' : currentAd.url + '?mute=1'}
+                    className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen title={currentAd.name}
+                  />
+                ) : currentAd.type === 'youtube' ? (
+                  <div className="w-full h-full bg-gray-900 flex flex-col items-center justify-center space-y-3 p-4">
+                    <span className="text-4xl">⚽</span>
+                    <p className="text-[8px] font-black text-white uppercase text-center">Live Match Available</p>
+                    <button onClick={() => window.open(currentAd.url, '_blank')}
+                      className="bg-red-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center space-x-2">
+                      <i className="fas fa-play text-sm"></i><span>Watch Live Match</span>
+                    </button>
                   </div>
+                ) : (
+                  <SponsoredVideo video={currentAd} onEnded={nextAd} isMutedByRadio={!tvAudioOn} />
+                )}
+              </>
+            ) : (
+              /* Off air screen */
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950 space-y-2">
+                <span className="text-3xl font-black text-gray-800">NDRtv</span>
+                <span className="text-[7px] font-black text-gray-700 uppercase tracking-widest">Off Air</span>
+              </div>
+            )}
+          </div>
+
+          {/* ── BOTTOM: controls + red ticker ── */}
+          <div className="bg-gray-950 border-t border-gray-800">
+            {/* Controls row */}
+            {currentAd && currentAd.type !== 'image' && (
+              <div className="flex items-center space-x-2 px-3 py-1.5 border-b border-gray-800">
+                <button onClick={handleTvAudioToggle}
+                  className={`flex items-center space-x-1 px-2 py-1 rounded-lg text-[6px] font-black uppercase transition-all ${tvAudioOn ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400'}`}>
+                  <i className={`fas ${tvAudioOn ? 'fa-pause' : 'fa-play'} text-[8px]`}></i>
+                  <span>{tvAudioOn ? 'Pause' : 'Play'}</span>
+                </button>
+                {tvAudioOn && (
+                  <button onClick={() => setTvAudioOn(false)}
+                    className="flex items-center space-x-1 px-2 py-1 rounded-lg text-[6px] font-black uppercase bg-gray-800 text-gray-400">
+                    <i className="fas fa-stop text-[8px]"></i><span>Stop</span>
+                  </button>
+                )}
+                <span className="text-[6px] text-gray-600 ml-auto truncate">{currentAd.caption || currentAd.name}</span>
+              </div>
+            )}
+
+            {/* Red scrolling ticker — always visible */}
+            <div className="bg-red-600 flex items-center overflow-hidden" style={{ height: '20px' }}>
+              {/* Nigerian flag */}
+              <div className="shrink-0 flex h-full border-r border-red-700" style={{ width: '24px' }}>
+                <div className="flex-1 bg-[#008751]"></div>
+                <div className="flex-1 bg-white"></div>
+                <div className="flex-1 bg-[#008751]"></div>
+              </div>
+              <div className="flex-1 overflow-hidden h-full flex items-center">
+                <div className="flex whitespace-nowrap animate-tv-ticker items-center">
+                  <span className="text-[7px] font-black text-white uppercase tracking-widest px-4">{APP_NAME} — {CHANNEL_INTRO}</span>
+                  {adminMessages.map((msg, i) => (
+                    <span key={`tv-admin-${i}`} className="text-[7px] text-yellow-200 font-black uppercase px-4 flex items-center">
+                      <i className="fas fa-bullhorn mr-1"></i>{msg.text}
+                      <span className="ml-4 text-red-300">◆</span>
+                    </span>
+                  ))}
+                  {news.map((n, i) => (
+                    <span key={`tv-news-${i}`} className="text-[7px] text-white font-bold uppercase px-4 flex items-center">
+                      <span className="w-1.5 h-1.5 bg-yellow-300 rounded-full mr-2 shrink-0"></span>
+                      {n.title}
+                      <span className="ml-4 text-red-300">◆</span>
+                    </span>
+                  ))}
+                  <span className="text-[7px] font-black text-white uppercase tracking-widest px-4">{APP_NAME} — {CHANNEL_INTRO}</span>
                 </div>
               </div>
             </div>
-          ) : (
-            <div style={{ borderRadius: 0, height: '276px' }} className="bg-green-50/20 border border-dashed border-green-100 flex flex-col items-center justify-center opacity-40">
-              <i className="fas fa-signal mb-2 text-green-600"></i>
-              <span className="text-[6px] font-black uppercase tracking-widest">Awaiting Sponsor Signal</span>
-            </div>
-          )}
+          </div>
         </div>
       </section>
 
