@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Logo from './Logo';
 import {
   isBroadcastActive,
@@ -8,8 +8,10 @@ import {
   stopBroadcast,
   setBroadcastVolume,
 } from '../services/aiDjService';
+import { webSpeechSpeak } from '../services/webSpeechService';
+import { JINGLE_DJ } from '../constants';
 import { dbService } from '../services/dbService';
-import { hasApi, getLiveState } from '../services/apiService';
+import { hasApi } from '../services/apiService';
 
 interface RadioPlayerProps {
   onStateChange: (isPlaying: boolean) => void;
@@ -39,6 +41,8 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   const [duration, setDuration] = useState(0);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const broadcastingRef = useRef(false);
+  const midJingleFiredRef = useRef(false);   // tracks if DJ jingle already played this song
+  const midJingleRunningRef = useRef(false); // prevents double-fire
 
   // Poll broadcast state — debounced to avoid flicker between segments
   useEffect(() => {
@@ -180,7 +184,28 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       const t = audio.currentTime;
       const d = audio.duration;
       setCurrentTime(t);
-      // Mid-song jingle disabled — was causing robotic TTS interruptions
+
+      // Mid-song DJ jingle — fires once at 50% of track duration
+      if (
+        d > 10 &&
+        isFinite(d) &&
+        t >= d * 0.5 &&
+        !midJingleFiredRef.current &&
+        !midJingleRunningRef.current &&
+        !isBroadcastActive()
+      ) {
+        midJingleFiredRef.current  = true;
+        midJingleRunningRef.current = true;
+
+        // Duck music, speak jingle, restore
+        const prevVol = audio.volume;
+        audio.volume = Math.max(0, prevVol * 0.15);
+
+        webSpeechSpeak(JINGLE_DJ, { rate: 1.25, pitch: 1.2 }).then(() => {
+          audio.volume = prevVol;
+          midJingleRunningRef.current = false;
+        });
+      }
     });
     audio.addEventListener('loadedmetadata', () => setDuration(audio.duration));
     audio.addEventListener('canplay', handleCanPlay);
@@ -231,6 +256,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
         const isLocal = targetSrc.startsWith('blob:') || targetSrc.startsWith('data:');
         isStreamRef.current = !isLocal;
 
+        // Disable CORS handling for blobs/data to avoid issues
         if (isLocal) {
           audioRef.current.crossOrigin = null;
         } else {
@@ -239,33 +265,48 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
         audioRef.current.src = targetSrc;
         audioRef.current.load();
-        setStatus('LOADING');
 
-        // Always play when a new track URL is set — this is the primary play trigger
-        if (!isStreamRef.current) initAudioContext();
-        const playWhenReady = () => {
-          audioRef.current?.play().catch(err => {
-            if (err.name === 'NotAllowedError') {
-              setStatus('IDLE');
-              setErrorMessage('Tap ▶ to play');
-              setTimeout(() => setErrorMessage(''), 4000);
-            } else {
-              console.warn('Playback failed:', err);
-              setStatus('IDLE');
-            }
+        if (isPlaying || forcePlaying) {
+          if (!isStreamRef.current) {
+            initAudioContext();
+          }
+
+          audioRef.current.play().catch(err => {
+            console.warn("Playback failed:", err);
+            setStatus('IDLE');
           });
-        };
-        audioRef.current.addEventListener('canplay', playWhenReady, { once: true });
+        }
       }
     }
   }, [activeTrackUrl]);
 
   useEffect(() => {
-    if (!audioRef.current) return;
-    if (!forcePlaying && !audioRef.current.paused) {
-      audioRef.current.pause();
+    if (audioRef.current) {
+      if (forcePlaying && audioRef.current.paused) {
+        // Don't attempt play if there's no source loaded
+        if (!audioRef.current.src || audioRef.current.src === window.location.href) {
+          setStatus('IDLE');
+          return;
+        }
+        // Only init audio context for local files
+        if (!isStreamRef.current) {
+          initAudioContext();
+        }
+
+        audioRef.current.play().catch((err) => {
+          // NotAllowedError = browser blocked autoplay — show tap-to-play, don't spin
+          if (err.name === 'NotAllowedError') {
+            setStatus('IDLE');
+            setErrorMessage('Tap play to start listening');
+            setTimeout(() => setErrorMessage(''), 4000);
+          } else {
+            setStatus('IDLE');
+          }
+        });
+      } else if (!forcePlaying && !audioRef.current.paused) {
+        audioRef.current.pause();
+      }
     }
-    // Play is handled by activeTrackUrl effect — no need to trigger here
   }, [forcePlaying]);
 
   useEffect(() => {
@@ -308,6 +349,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     if (!streamUrl && hasApi()) {
       try {
         setStatus('LOADING');
+        const { getLiveState } = await import('../services/apiService');
         const live = await getLiveState();
         if (live?.track?.url?.startsWith('http')) {
           streamUrl = live.track.url;

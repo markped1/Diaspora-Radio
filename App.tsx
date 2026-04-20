@@ -31,8 +31,6 @@ const App: React.FC = () => {
   const [hasInteracted, setHasInteracted] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<string>("Global");
 
-  const roleRef = useRef<UserRole>(role);
-  useEffect(() => { roleRef.current = role; }, [role]);
   const isSyncingRef = useRef(false);
   const lastBroadcastMarkerRef = useRef<string>("");
   const wasPlayingBeforeBroadcastRef = useRef(false);
@@ -104,20 +102,16 @@ const App: React.FC = () => {
         getLiveState().then(live => {
           // Admin control: sync track to all listeners
           if (live.track?.url?.startsWith('http')) {
-            // Admin is playing a cloud track — sync to listener
+            // Admin is playing a cloud track — update listener
             setActiveTrackUrl(live.track.url);
             setCurrentTrackName(live.track.name || '');
-            // Auto-play for listeners (roleRef check ensures admin isn't affected)
-            if (roleRef.current === UserRole.LISTENER) {
-              setIsRadioPlaying(true);
-            }
+            // Never force autoplay — let user tap play (required by all browsers except Chrome)
+            // Just update the URL so when they tap play it starts the right track
           } else if (live.track === null) {
-            // Admin stopped — only stop listener, not admin's own playback
-            if (roleRef.current === UserRole.LISTENER) {
-              setActiveTrackUrl(null);
-              setCurrentTrackName('');
-              setIsRadioPlaying(false);
-            }
+            // Admin stopped — stop listener too
+            setActiveTrackUrl(null);
+            setCurrentTrackName('');
+            setIsRadioPlaying(false);
           }
           if (live.messages?.length) setAdminMessages(live.messages);
           // Sync live TV to sponsored media so ListenerView shows it
@@ -401,27 +395,15 @@ const App: React.FC = () => {
           <AdminView
             onRefreshData={fetchData} logs={logs} onPlayTrack={(t) => {
               setHasInteracted(true);
+              // Prefer cloud URL if available, fall back to local blob
+              const url = t.url?.startsWith('http') ? t.url : t.url;
               setActiveTrackId(t.id);
-              setActiveTrackUrl(t.url);
+              setActiveTrackUrl(url);
               setCurrentTrackName(cleanTrackName(t.name));
               setIsRadioPlaying(true);
-              // Push to cloud
-              if (hasApi()) {
-                if (t.url?.startsWith('http')) {
-                  // Cloud URL — push directly
-                  setLiveTrack({ url: t.url, name: cleanTrackName(t.name) }).catch(() => {});
-                } else {
-                  // Local blob — find cloud version by name
-                  getSharedMedia().then(cloudItems => {
-                    const match = cloudItems.find((c: any) =>
-                      c.type === 'audio' && c.url?.startsWith('http') &&
-                      (c.id === t.id || c.name === t.name)
-                    );
-                    if (match) {
-                      setLiveTrack({ url: match.url, name: cleanTrackName(t.name) }).catch(() => {});
-                    }
-                  }).catch(() => {});
-                }
+              // Push to cloud if it's a cloud URL
+              if (hasApi() && url?.startsWith('http')) {
+                setLiveTrack({ url, name: cleanTrackName(t.name) }).catch(() => {});
               }
             }}
             isRadioPlaying={isRadioPlaying} onToggleRadio={() => {

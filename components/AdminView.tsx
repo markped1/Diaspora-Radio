@@ -499,7 +499,7 @@ const AdminView: React.FC<AdminViewProps> = ({
                               <i className={`fas ${isCloud ? 'fa-cloud' : 'fa-hdd'} text-white text-[7px]`}></i>
                             </div>
                             <div className="truncate">
-                              <p className="text-[9px] font-bold text-gray-900 truncate">{(item.name || '').replace(/\.(mp3|wav|m4a|aac|ogg|flac)$/i, '')}</p>
+                              <p className="text-[9px] font-bold text-gray-900 truncate">{item.name.replace(/\.(mp3|wav|m4a|aac|ogg|flac)$/i, '')}</p>
                               <p className={`text-[6px] ${isCloud ? 'text-blue-400' : 'text-gray-400'}`}>{isCloud ? '☁️ Cloud' : '📱 Local only'}</p>
                             </div>
                           </div>
