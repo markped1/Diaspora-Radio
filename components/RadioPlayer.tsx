@@ -283,6 +283,11 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   useEffect(() => {
     if (audioRef.current) {
       if (forcePlaying && audioRef.current.paused) {
+        // Don't attempt play if there's no source loaded
+        if (!audioRef.current.src || audioRef.current.src === window.location.href) {
+          setStatus('IDLE');
+          return;
+        }
         // Only init audio context for local files
         if (!isStreamRef.current) {
           initAudioContext();
@@ -290,8 +295,8 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
         audioRef.current.play().catch((err) => {
           console.error("Play failed:", err);
-          setStatus('ERROR');
-          setErrorMessage('Failed to play - Try clicking play again');
+          setStatus('IDLE');
+          setErrorMessage('');
         });
       } else if (!forcePlaying && !audioRef.current.paused) {
         audioRef.current.pause();
@@ -447,14 +452,14 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
         <div className="flex items-center space-x-3">
           <button
             onClick={handlePlayPause}
-            disabled={status === 'LOADING' && !isBroadcasting}
+            disabled={status === 'LOADING' && !isBroadcasting && !!activeTrackUrl}
             className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all border-4 border-white ${
               isBroadcasting
                 ? (isBroadcastPaused() ? 'bg-amber-500' : 'bg-red-500')
                 : status === 'ERROR' ? 'bg-red-500' : 'bg-[#008751]'
             } text-white`}
           >
-            {status === 'LOADING' && !isBroadcasting
+            {status === 'LOADING' && !isBroadcasting && !!activeTrackUrl
               ? <i className="fas fa-circle-notch fa-spin"></i>
               : isBroadcasting
                 ? <i className={`fas ${isBroadcastPaused() ? 'fa-play' : 'fa-pause'} text-lg`}></i>

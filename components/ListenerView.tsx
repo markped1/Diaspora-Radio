@@ -136,8 +136,18 @@ const ListenerView: React.FC<ListenerViewProps> = ({
         <div className="absolute top-0 right-0 w-16 h-16 bg-green-50/50 rounded-full -mr-8 -mt-8"></div>
       </div>
 
-      {/* 3. NDR TV */}
+      {/* 3. NDR TV — LIVE MONITOR */}
       <section className="space-y-0">
+        {/* Live Monitor label */}
+        <div className="flex items-center justify-between px-1 mb-1">
+          <h3 className="text-[7px] font-black uppercase tracking-[0.2em] text-green-700">Live Monitor</h3>
+          {currentAd && (
+            <span className="text-[6px] font-black text-red-500 flex items-center space-x-1">
+              <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping inline-block"></span>
+              <span>On Air</span>
+            </span>
+          )}
+        </div>
         {/* NDR TV Monitor */}
         <div className="bg-black overflow-hidden shadow-2xl" style={{ borderRadius: 0 }}>
 
