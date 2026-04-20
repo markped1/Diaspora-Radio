@@ -34,6 +34,7 @@ const ListenerView: React.FC<ListenerViewProps> = ({
   const [shareFeedback, setShareFeedback] = useState('');
   // TV is always visually on but audio is muted when radio is playing
   const [tvAudioOn, setTvAudioOn] = useState(false);
+  const [tvVolume, setTvVolume] = useState(0.8);
 
   const timerRef = useRef<number | null>(null);
 
@@ -45,9 +46,9 @@ const ListenerView: React.FC<ListenerViewProps> = ({
   // Listener taps TV sound button
   const handleTvAudioToggle = () => {
     if (!tvAudioOn) {
-      // Turn TV audio ON → stop radio first
-      onStateChange(false);
+      // Turn TV audio ON — stop radio separately without triggering re-render loop
       setTvAudioOn(true);
+      onStateChange(false);
     } else {
       setTvAudioOn(false);
     }
@@ -136,18 +137,8 @@ const ListenerView: React.FC<ListenerViewProps> = ({
         <div className="absolute top-0 right-0 w-16 h-16 bg-green-50/50 rounded-full -mr-8 -mt-8"></div>
       </div>
 
-      {/* 3. NDR TV — LIVE MONITOR */}
+      {/* NDR TV — LIVE MONITOR */}
       <section className="space-y-0">
-        {/* Live Monitor label */}
-        <div className="flex items-center justify-between px-1 mb-1">
-          <h3 className="text-[7px] font-black uppercase tracking-[0.2em] text-green-700">Live Monitor</h3>
-          {currentAd && (
-            <span className="text-[6px] font-black text-red-500 flex items-center space-x-1">
-              <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping inline-block"></span>
-              <span>On Air</span>
-            </span>
-          )}
-        </div>
         {/* NDR TV Monitor */}
         <div className="bg-black overflow-hidden shadow-2xl" style={{ borderRadius: 0 }}>
 
@@ -195,7 +186,6 @@ const ListenerView: React.FC<ListenerViewProps> = ({
                 )}
               </>
             ) : (
-              /* Off air screen */
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950 space-y-2">
                 <span className="text-3xl font-black text-gray-800">NDRtv</span>
                 <span className="text-[7px] font-black text-gray-700 uppercase tracking-widest">Off Air</span>
@@ -203,29 +193,49 @@ const ListenerView: React.FC<ListenerViewProps> = ({
             )}
           </div>
 
-          {/* ── BOTTOM: controls + red ticker ── */}
-          <div className="bg-gray-950 border-t border-gray-800">
-            {/* Controls row */}
-            {currentAd && currentAd.type !== 'image' && (
-              <div className="flex items-center space-x-2 px-3 py-1.5 border-b border-gray-800">
-                <button onClick={handleTvAudioToggle}
-                  className={`flex items-center space-x-1 px-2 py-1 rounded-lg text-[6px] font-black uppercase transition-all ${tvAudioOn ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400'}`}>
-                  <i className={`fas ${tvAudioOn ? 'fa-pause' : 'fa-play'} text-[8px]`}></i>
-                  <span>{tvAudioOn ? 'Pause' : 'Play'}</span>
+          {/* ── BOTTOM CONTROLS ── */}
+          <div className="bg-gray-950 border-t border-gray-800 px-3 py-2 space-y-2">
+            {/* Play / Pause / Stop + Volume + Expand */}
+            <div className="flex items-center justify-between">
+              {/* Left: play controls */}
+              <div className="flex items-center space-x-2">
+                {/* Play/Pause */}
+                <button
+                  onClick={handleTvAudioToggle}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-white transition-all active:scale-90 ${tvAudioOn ? 'bg-red-600' : 'bg-gray-700 hover:bg-gray-600'}`}>
+                  <i className={`fas ${tvAudioOn ? 'fa-pause' : 'fa-play'} text-[9px] ${!tvAudioOn ? 'ml-0.5' : ''}`}></i>
                 </button>
-                {tvAudioOn && (
-                  <button onClick={() => setTvAudioOn(false)}
-                    className="flex items-center space-x-1 px-2 py-1 rounded-lg text-[6px] font-black uppercase bg-gray-800 text-gray-400">
-                    <i className="fas fa-stop text-[8px]"></i><span>Stop</span>
-                  </button>
-                )}
-                <span className="text-[6px] text-gray-600 ml-auto truncate">{currentAd.caption || currentAd.name}</span>
+                {/* Stop */}
+                <button
+                  onClick={() => { setTvAudioOn(false); onStateChange(false); }}
+                  className="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center text-white transition-all active:scale-90">
+                  <i className="fas fa-stop text-[9px]"></i>
+                </button>
+                {/* Volume */}
+                <div className="flex items-center space-x-1">
+                  <i className={`fas ${tvVolume === 0 ? 'fa-volume-mute' : 'fa-volume-up'} text-gray-400 text-[8px]`}></i>
+                  <input
+                    type="range" min="0" max="1" step="0.05" value={tvVolume}
+                    onChange={e => setTvVolume(parseFloat(e.target.value))}
+                    className="w-16 h-0.5 accent-red-500 cursor-pointer"
+                  />
+                </div>
               </div>
-            )}
+              {/* Right: expand */}
+              {currentAd && (
+                <button
+                  onClick={() => {
+                    const el = document.getElementById('ndr-tv-screen');
+                    if (el?.requestFullscreen) el.requestFullscreen();
+                  }}
+                  className="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center text-white transition-all active:scale-90">
+                  <i className="fas fa-expand text-[9px]"></i>
+                </button>
+              )}
+            </div>
 
-            {/* Red scrolling ticker — always visible */}
-            <div className="bg-red-600 flex items-center overflow-hidden" style={{ height: '20px' }}>
-              {/* Nigerian flag */}
+            {/* Red scrolling ticker */}
+            <div className="bg-red-600 flex items-center overflow-hidden rounded-sm" style={{ height: '20px' }}>
               <div className="shrink-0 flex h-full border-r border-red-700" style={{ width: '24px' }}>
                 <div className="flex-1 bg-[#008751]"></div>
                 <div className="flex-1 bg-white"></div>

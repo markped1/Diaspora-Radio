@@ -309,7 +309,7 @@ const App: React.FC = () => {
   const handlePlayAll = () => {
     setHasInteracted(true);
     if (audioPlaylist.length === 0) {
-      setIsRadioPlaying(true);
+      // No tracks — nothing to play, don't toggle state
       return;
     }
     const track = isShuffle ? audioPlaylist[Math.floor(Math.random() * audioPlaylist.length)] : audioPlaylist[0];
