@@ -97,6 +97,73 @@ const AdminView: React.FC<AdminViewProps> = ({
     };
   }, []);
 
+  // Background auto-sync: Check for unsynced files every 5 minutes
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      if (mediaList.length > 0 && hasApi()) {
+        const unsynced = mediaList.filter(m => (!m.url || m.url.startsWith('blob:')) && m.file);
+        if (unsynced.length > 0 && !isProcessing) {
+          console.log(`☁️ Background sync triggered for ${unsynced.length} files`);
+          syncAllMediaToCloud();
+        }
+      }
+    }, 300000); // 5 minutes
+    return () => clearInterval(syncInterval);
+  }, [mediaList.length, isProcessing]);
+
+  const syncAllMediaToCloud = async () => {
+    if (isProcessing) return;
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+    if (!cloudName || !uploadPreset) {
+      setStatusMsg('❌ Cloudinary keys missing in .env.local');
+      return;
+    }
+
+    const unsynced = mediaList.filter(m => (!m.url || m.url.startsWith('blob:')) && m.file);
+    if (unsynced.length === 0) {
+      setStatusMsg('✅ All files are already synced to cloud');
+      setTimeout(() => setStatusMsg(''), 3000);
+      return;
+    }
+
+    setIsProcessing(true);
+    let successCount = 0;
+    
+    for (let i = 0; i < unsynced.length; i++) {
+        const item = unsynced[i];
+        setStatusMsg(`Syncing ${i+1}/${unsynced.length}: ${item.name}`);
+        try {
+            const form = new FormData();
+            form.append('file', item.file!);
+            form.append('upload_preset', uploadPreset);
+            const resourceType = (item.type === 'audio' || item.type === 'video') ? 'video' : 'image';
+            
+            const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`, { 
+              method: 'POST', body: form, signal: AbortSignal.timeout(60000) 
+            });
+            const data = await res.json();
+            
+            if (data.secure_url) {
+                await dbService.updateMedia({ ...item, url: data.secure_url, file: item.file }); // Keep local file!
+                await addMediaToCloud({
+                    id: item.id, name: item.name, url: data.secure_url,
+                    type: item.type, timestamp: item.timestamp
+                });
+                successCount++;
+            }
+        } catch (err) {
+            console.error(`Sync failed for ${item.name}:`, err);
+        }
+    }
+
+    setIsProcessing(false);
+    setStatusMsg(`✅ Completed: ${successCount} files duplicated to cloud`);
+    await loadData();
+    await loadCloudMedia();
+    setTimeout(() => setStatusMsg(''), 5000);
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -458,6 +525,16 @@ const AdminView: React.FC<AdminViewProps> = ({
                 </div>
                 <button onClick={loadCloudMedia} className="text-blue-500"><i className={`fas fa-sync-alt text-[10px] ${isLoadingCloud ? 'animate-spin' : ''}`}></i></button>
               </div>
+
+              {/* Manual sync button */}
+              <button 
+                onClick={syncAllMediaToCloud} 
+                disabled={isProcessing}
+                className="w-full bg-blue-600/10 text-blue-700 border border-blue-200 py-3 rounded-2xl flex items-center justify-center space-x-2 shadow-sm active:scale-95 transition-all"
+              >
+                <i className={`fas ${isProcessing ? 'fa-circle-notch fa-spin' : 'fa-cloud-upload-alt'} text-xs`}></i>
+                <span className="text-[8px] font-black uppercase tracking-widest">Duplicate All Local Files to Cloud</span>
+              </button>
 
               {/* Unified track list — cloud + local merged */}
               {(() => {
