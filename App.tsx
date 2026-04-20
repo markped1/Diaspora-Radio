@@ -100,12 +100,13 @@ const App: React.FC = () => {
       // Sync cloud state in background — non-blocking, doesn't slow down UI
       if (hasApi()) {
         getLiveState().then(live => {
-          // Admin control: sync track to all listeners regardless of play state
+          // Admin control: sync track to all listeners
           if (live.track?.url?.startsWith('http')) {
-            // Admin is playing — update listener track
+            // Admin is playing a cloud track — update listener
             setActiveTrackUrl(live.track.url);
             setCurrentTrackName(live.track.name || '');
-            setIsRadioPlaying(true);
+            // Only auto-play if listener has already interacted with the page
+            if (hasInteracted) setIsRadioPlaying(true);
           } else if (live.track === null) {
             // Admin stopped — stop listener too
             setActiveTrackUrl(null);
@@ -294,9 +295,18 @@ const App: React.FC = () => {
     setActiveTrackUrl(track.url);
     setCurrentTrackName(cleanTrackName(track.name));
     setIsRadioPlaying(true);
-    // Push live track to cloud so all listeners hear it (only HTTP URLs work across devices)
-    if (hasApi() && track.url.startsWith('http')) {
-      setLiveTrack({ url: track.url, name: cleanTrackName(track.name) }).catch(() => {});
+    // Push to cloud — use cloud URL if available, otherwise skip (blob URLs don't work for listeners)
+    const pushUrl = track.url.startsWith('http') ? track.url : null;
+    if (hasApi() && pushUrl) {
+      setLiveTrack({ url: pushUrl, name: cleanTrackName(track.name) }).catch(() => {});
+    } else if (hasApi() && !pushUrl) {
+      // Local file — check if cloud version exists in shared media
+      getSharedMedia().then(cloudItems => {
+        const cloudVersion = cloudItems.find(c => c.name === track.name && c.url.startsWith('http'));
+        if (cloudVersion) {
+          setLiveTrack({ url: cloudVersion.url, name: cleanTrackName(track.name) }).catch(() => {});
+        }
+      }).catch(() => {});
     }
   };
 
