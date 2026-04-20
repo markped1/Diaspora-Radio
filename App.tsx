@@ -105,13 +105,14 @@ const App: React.FC = () => {
             // Admin is playing a cloud track — update listener
             setActiveTrackUrl(live.track.url);
             setCurrentTrackName(live.track.name || '');
-            // Never force autoplay — let user tap play (required by all browsers except Chrome)
-            // Just update the URL so when they tap play it starts the right track
           } else if (live.track === null) {
-            // Admin stopped — stop listener too
-            setActiveTrackUrl(null);
-            setCurrentTrackName('');
-            setIsRadioPlaying(false);
+            // Admin stopped — only stop listener if they are in listener role
+            // Don't stop admin's own local playback
+            if (role === UserRole.LISTENER) {
+              setActiveTrackUrl(null);
+              setCurrentTrackName('');
+              setIsRadioPlaying(false);
+            }
           }
           if (live.messages?.length) setAdminMessages(live.messages);
           // Sync live TV to sponsored media so ListenerView shows it
@@ -154,7 +155,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error("Data fetch error", err);
     }
-  }, [activeTrackId]);
+  }, [activeTrackId, role]);
 
   // Fetch fresh news from RSS and dump into newsroom + state
   const refreshNews = useCallback(async () => {
