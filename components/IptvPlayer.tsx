@@ -24,12 +24,10 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
 
   const tryPlay = (video: HTMLVideoElement) => {
+    video.muted = true; // always start muted for autoplay policy
     video.play().catch(err => {
       if (err.name === 'NotAllowedError') {
-        // Autoplay blocked — show tap to play
         setStatus('paused');
-      } else {
-        console.warn('Play failed:', err.message);
       }
     });
   };
@@ -93,8 +91,9 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
   const handleTapToPlay = () => {
     const video = videoRef.current;
     if (!video) return;
-    video.muted = muted;
+    video.muted = false; // unmute on user gesture
     video.play().catch(console.warn);
+    setStatus('playing');
   };
 
   return (

@@ -238,10 +238,13 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     };
   }, []);
 
+  const pendingPlayRef = useRef(false);
+
   useEffect(() => {
     if (audioRef.current) {
       const targetSrc = activeTrackUrl;
       if (!targetSrc) {
+        pendingPlayRef.current = false;
         audioRef.current.pause();
         audioRef.current.removeAttribute('src');
         audioRef.current.load();
@@ -251,11 +254,13 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
         setErrorMessage('');
         return;
       }
-      if (audioRef.current.src !== targetSrc) {
+      // Normalize URL comparison
+      const currentSrc = audioRef.current.src;
+      const isSameSrc = currentSrc === targetSrc || currentSrc.endsWith(targetSrc);
+      if (!isSameSrc) {
         const isLocal = targetSrc.startsWith('blob:') || targetSrc.startsWith('data:');
         isStreamRef.current = !isLocal;
 
-        // Disable CORS handling for blobs/data to avoid issues
         if (isLocal) {
           audioRef.current.crossOrigin = null;
         } else {
@@ -264,47 +269,50 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
         audioRef.current.src = targetSrc;
         audioRef.current.load();
+        setStatus('LOADING');
+        pendingPlayRef.current = true;
 
-        if (isPlaying || forcePlaying) {
-          if (!isStreamRef.current) {
-            initAudioContext();
-          }
-
-          audioRef.current.play().catch(err => {
-            console.warn("Playback failed:", err);
-            setStatus('IDLE');
+        // Play once ready
+        const onCanPlay = () => {
+          if (!pendingPlayRef.current) return;
+          pendingPlayRef.current = false;
+          if (!isStreamRef.current) initAudioContext();
+          audioRef.current?.play().catch(err => {
+            if (err.name === 'NotAllowedError') {
+              setStatus('IDLE');
+              setErrorMessage('Tap ▶ to play');
+              setTimeout(() => setErrorMessage(''), 4000);
+            } else {
+              setStatus('IDLE');
+            }
           });
-        }
+        };
+        audioRef.current.addEventListener('canplay', onCanPlay, { once: true });
       }
     }
   }, [activeTrackUrl]);
 
   useEffect(() => {
-    if (audioRef.current) {
-      if (forcePlaying && audioRef.current.paused) {
-        // Don't attempt play if there's no source loaded
-        if (!audioRef.current.src || audioRef.current.src === window.location.href) {
-          setStatus('IDLE');
-          return;
-        }
-        // Only init audio context for local files
-        if (!isStreamRef.current) {
-          initAudioContext();
-        }
-
-        audioRef.current.play().catch((err) => {
-          // NotAllowedError = browser blocked autoplay — show tap-to-play, don't spin
-          if (err.name === 'NotAllowedError') {
-            setStatus('IDLE');
-            setErrorMessage('Tap play to start listening');
-            setTimeout(() => setErrorMessage(''), 4000);
-          } else {
-            setStatus('IDLE');
-          }
-        });
-      } else if (!forcePlaying && !audioRef.current.paused) {
-        audioRef.current.pause();
+    if (!audioRef.current) return;
+    if (forcePlaying && audioRef.current.paused && !pendingPlayRef.current) {
+      // Only play if src is loaded and not waiting for canplay
+      if (!audioRef.current.src || audioRef.current.src === window.location.href) {
+        setStatus('IDLE');
+        return;
       }
+      if (!isStreamRef.current) initAudioContext();
+      audioRef.current.play().catch(err => {
+        if (err.name === 'NotAllowedError') {
+          setStatus('IDLE');
+          setErrorMessage('Tap ▶ to play');
+          setTimeout(() => setErrorMessage(''), 4000);
+        } else {
+          setStatus('IDLE');
+        }
+      });
+    } else if (!forcePlaying && !audioRef.current.paused) {
+      pendingPlayRef.current = false;
+      audioRef.current.pause();
     }
   }, [forcePlaying]);
 
