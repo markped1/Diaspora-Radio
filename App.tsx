@@ -33,6 +33,8 @@ const App: React.FC = () => {
   const [currentLocation, setCurrentLocation] = useState<string>("Global");
 
   const isSyncingRef = useRef(false);
+  const roleRef = useRef<UserRole>(UserRole.LISTENER);
+  useEffect(() => { roleRef.current = role; }, [role]);
   const lastBroadcastMarkerRef = useRef<string>("");
   const wasPlayingBeforeBroadcastRef = useRef(false);
 
@@ -104,21 +106,19 @@ const App: React.FC = () => {
         getLiveState().then(live => {
           setApiStatus('connected');
           // Sync cloud track to LISTENERS only — Admin is the source of truth
-          if (role === UserRole.LISTENER) {
+          if (roleRef.current === UserRole.LISTENER) {
             if (live.track?.url?.startsWith('http')) {
               setActiveTrackUrl(live.track.url);
               setCurrentTrackName(live.track.name || '');
-              // Auto-play if user has already interacted (to satisfy browser policies)
-              if (hasInteracted && !isRadioPlaying) {
-                setIsRadioPlaying(true);
-              }
+              // Always set playing for listeners — they need to tap play due to browser policy
+              setIsRadioPlaying(true);
             } else if (live.track === null) {
               setActiveTrackUrl(null);
               setCurrentTrackName('');
               setIsRadioPlaying(false);
             }
           }
-          if (live.stream && role === UserRole.LISTENER) {
+          if (live.stream && roleRef.current === UserRole.LISTENER) {
             dbService.setLiveStreamUrl(live.stream);
           }
           if (live.messages?.length) setAdminMessages(live.messages);
