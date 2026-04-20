@@ -294,15 +294,17 @@ const App: React.FC = () => {
       return;
     }
     const currentIndex = list.findIndex(t => t.id === activeTrackId);
-    let nextIndex = isShuffle ? Math.floor(Math.random() * list.length) : (currentIndex + 1) % list.length;
-    const track = list[nextIndex];
+    // Prefer cloud tracks
+    const cloudTracks = list.filter(t => t.url?.startsWith('http'));
+    const pool = cloudTracks.length > 0 ? cloudTracks : list;
+    let nextIndex = isShuffle ? Math.floor(Math.random() * pool.length) : (currentIndex + 1) % pool.length;
+    const track = pool[nextIndex];
     if (track) {
       setActiveTrackId(track.id);
       setActiveTrackUrl(track.url);
       setCurrentTrackName(cleanTrackName(track.name));
       setIsRadioPlaying(true);
-      // Push live track to cloud
-      if (hasApi() && track.url.startsWith('http')) setLiveTrack({ url: track.url, name: cleanTrackName(track.name) }).catch(() => {});
+      if (hasApi() && track.url?.startsWith('http')) setLiveTrack({ url: track.url, name: cleanTrackName(track.name) }).catch(() => {});
     }
   }, [activeTrackId, isShuffle]);
 
@@ -312,7 +314,10 @@ const App: React.FC = () => {
       // No tracks — nothing to play, don't toggle state
       return;
     }
-    const track = isShuffle ? audioPlaylist[Math.floor(Math.random() * audioPlaylist.length)] : audioPlaylist[0];
+    // Prefer cloud tracks (http URLs) over local blobs
+    const cloudTracks = audioPlaylist.filter(t => t.url?.startsWith('http'));
+    const pool = cloudTracks.length > 0 ? cloudTracks : audioPlaylist;
+    const track = isShuffle ? pool[Math.floor(Math.random() * pool.length)] : pool[0];
     setActiveTrackId(track.id);
     setActiveTrackUrl(track.url);
     setCurrentTrackName(cleanTrackName(track.name));
@@ -389,7 +394,19 @@ const App: React.FC = () => {
           />
         ) : (
           <AdminView
-            onRefreshData={fetchData} logs={logs} onPlayTrack={(t) => { setHasInteracted(true); setActiveTrackId(t.id); setActiveTrackUrl(t.url); setCurrentTrackName(cleanTrackName(t.name)); setIsRadioPlaying(true); }}
+            onRefreshData={fetchData} logs={logs} onPlayTrack={(t) => {
+              setHasInteracted(true);
+              // Prefer cloud URL if available, fall back to local blob
+              const url = t.url?.startsWith('http') ? t.url : t.url;
+              setActiveTrackId(t.id);
+              setActiveTrackUrl(url);
+              setCurrentTrackName(cleanTrackName(t.name));
+              setIsRadioPlaying(true);
+              // Push to cloud if it's a cloud URL
+              if (hasApi() && url?.startsWith('http')) {
+                setLiveTrack({ url, name: cleanTrackName(t.name) }).catch(() => {});
+              }
+            }}
             isRadioPlaying={isRadioPlaying} onToggleRadio={() => {
               const stopping = isRadioPlaying;
               setIsRadioPlaying(!isRadioPlaying);
