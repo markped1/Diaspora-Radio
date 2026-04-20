@@ -1,17 +1,13 @@
 /**
- * IptvPlayer — plays M3U8/HLS streams using the native HTML5 video element.
+ * IptvPlayer — plays M3U8/HLS streams using hls.js (Firefox/Chrome/Edge)
+ * or native HLS (Safari/iOS).
  *
- * Works on:
- *   ✅ Chrome/Edge (desktop & Android) — native HLS via MediaSource Extensions
- *   ✅ Safari/iOS — native HLS support
- *   ✅ Capacitor Android WebView (Android 5+)
- *   ✅ Capacitor iOS WebView
- *
- * CORS note: If a stream fails to load, the server is blocking cross-origin
- * requests. Use the Test button in admin before pushing live.
+ * hls.js handles CORS-friendly streams on all browsers.
+ * CORS-blocked streams will still fail — use Test button before pushing live.
  */
 
 import React, { useRef, useEffect, useState } from 'react';
+import Hls from 'hls.js';
 
 interface IptvPlayerProps {
   url: string;
@@ -31,6 +27,7 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
   className = 'w-full h-full object-contain',
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const [status, setStatus] = useState<'loading' | 'playing' | 'error'>('loading');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -41,17 +38,69 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
     setStatus('loading');
     setErrorMsg('');
 
-    video.src = url;
-    video.muted = muted;
-    video.load();
+    // Destroy previous hls instance
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
 
-    if (autoPlay) {
-      video.play().catch(err => {
-        console.warn('IPTV autoplay blocked:', err.message);
+    const isHls = url.includes('.m3u8') || url.includes('m3u8');
+
+    if (isHls && Hls.isSupported()) {
+      // Firefox, Chrome, Edge — use hls.js
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        backBufferLength: 90,
       });
+      hlsRef.current = hls;
+
+      hls.loadSource(url);
+      hls.attachMedia(video);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.muted = muted;
+        if (autoPlay) {
+          video.play().catch(err => {
+            console.warn('HLS autoplay blocked:', err.message);
+          });
+        }
+      });
+
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) {
+          setStatus('error');
+          setErrorMsg('Stream unavailable or CORS blocked');
+          onError?.();
+        }
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari / iOS — native HLS
+      video.src = url;
+      video.muted = muted;
+      video.load();
+      if (autoPlay) {
+        video.play().catch(err => {
+          console.warn('Native HLS autoplay blocked:', err.message);
+        });
+      }
+    } else {
+      // Non-HLS URL (mp4, etc) — direct src
+      video.src = url;
+      video.muted = muted;
+      video.load();
+      if (autoPlay) {
+        video.play().catch(err => {
+          console.warn('Direct autoplay blocked:', err.message);
+        });
+      }
     }
 
     return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
       video.pause();
       video.src = '';
       video.load();
@@ -68,19 +117,20 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
         ref={videoRef}
         className={className}
         muted={muted}
-        autoPlay={autoPlay}
         playsInline
         controls={false}
         onPlaying={() => { setStatus('playing'); onPlaying?.(); }}
         onWaiting={() => setStatus('loading')}
         onError={() => {
-          setStatus('error');
-          setErrorMsg('Stream unavailable or CORS blocked');
-          onError?.();
+          // Only show error if hls.js isn't handling it
+          if (!hlsRef.current) {
+            setStatus('error');
+            setErrorMsg('Stream unavailable or CORS blocked');
+            onError?.();
+          }
         }}
       />
 
-      {/* Loading overlay */}
       {status === 'loading' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 space-y-2">
           <i className="fas fa-circle-notch fa-spin text-white text-xl"></i>
@@ -88,7 +138,6 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
         </div>
       )}
 
-      {/* Error overlay */}
       {status === 'error' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 space-y-2 px-4">
           <i className="fas fa-exclamation-triangle text-red-400 text-xl"></i>
@@ -101,7 +150,6 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
         </div>
       )}
 
-      {/* Live badge */}
       {status === 'playing' && (
         <div className="absolute top-2 left-2 bg-red-600 px-2 py-0.5 rounded-full flex items-center space-x-1">
           <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>
