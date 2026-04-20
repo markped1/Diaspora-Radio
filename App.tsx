@@ -31,7 +31,7 @@ const App: React.FC = () => {
   const [hasInteracted, setHasInteracted] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<string>("Global");
 
-  const roleRef = useRef(role);
+  const roleRef = useRef<UserRole>(role);
   useEffect(() => { roleRef.current = role; }, [role]);
   const isSyncingRef = useRef(false);
   const lastBroadcastMarkerRef = useRef<string>("");
