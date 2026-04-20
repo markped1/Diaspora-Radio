@@ -25,7 +25,7 @@ interface AdminViewProps {
 }
 
 type Tab = 'command' | 'bulletin' | 'tv' | 'sports' | 'media' | 'inbox' | 'logs';
-type MediaSubTab = 'audio' | 'video';
+type MediaSubTab = 'audio' | 'video' | 'ads';
 
 const AdminView: React.FC<AdminViewProps> = ({ 
   onRefreshData,
@@ -56,6 +56,7 @@ const AdminView: React.FC<AdminViewProps> = ({
   const [voiceMsg, setVoiceMsg] = useState('');
   const [nextSyncIn, setNextSyncIn] = useState<string>('');
   const [liveStreamUrl, setLiveStreamUrlState] = useState(() => dbService.getLiveStreamUrl());
+  const [adInterval, setAdInterval] = useState(() => Number(localStorage.getItem('ndr_ad_interval') || 3));
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -411,117 +412,242 @@ const AdminView: React.FC<AdminViewProps> = ({
 
       {activeTab === 'media' && (
         <div className="space-y-4">
-
-          {/* Upload button */}
-          <button
-            onClick={() => triggerUpload('audio/*')}
-            className="w-full bg-[#008751] text-white py-3 rounded-2xl flex items-center justify-center space-x-2 shadow-lg active:scale-95 transition-all"
-          >
-            <i className="fas fa-cloud-upload-alt"></i>
-            <span className="text-[10px] font-black uppercase tracking-widest">
-              {hasApi() ? 'Upload to Cloud' : 'Upload Audio Tracks'}
-            </span>
-          </button>
-
-          {/* Cloud status banner */}
-          {hasApi() ? (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <i className="fas fa-cloud text-blue-500 text-sm"></i>
-                <div>
-                  <p className="text-[7px] font-black text-blue-700 uppercase">Cloud Storage Active</p>
-                  <p className="text-[6px] text-blue-500">Uploads go to Cloudinary — all listeners can play them</p>
-                </div>
-              </div>
-              <button onClick={loadCloudMedia} className="text-blue-500 hover:text-blue-700">
-                <i className={`fas fa-sync-alt text-[10px] ${isLoadingCloud ? 'animate-spin' : ''}`}></i>
+          {/* Sub-tabs: Audio / Video / Ads */}
+          <div className="flex space-x-1 bg-gray-100 p-1 rounded-xl">
+            {(['audio', 'video', 'ads'] as const).map(t => (
+              <button key={t} onClick={() => setMediaSubTab(t as any)}
+                className={`flex-1 py-2 text-[7px] font-black uppercase rounded-lg transition-all ${mediaSubTab === t ? 'bg-white shadow text-green-700' : 'text-gray-400'}`}>
+                {t === 'audio' ? '🎵 Audio' : t === 'video' ? '🎬 Video' : '📢 Ads'}
               </button>
-            </div>
-          ) : (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2">
-              <p className="text-[7px] font-black text-yellow-700 uppercase">⚠️ Local Storage Only</p>
-              <p className="text-[6px] text-yellow-600">Add VITE_CLOUDINARY_CLOUD_NAME to Vercel to share music with all listeners</p>
-            </div>
-          )}
-
-          {/* Cloud Library */}
-          {hasApi() && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between px-1">
-                <h3 className="text-[7px] font-black uppercase text-blue-600 tracking-widest flex items-center space-x-1">
-                  <i className="fas fa-cloud text-blue-500"></i>
-                  <span>Cloud Library ({cloudMedia.filter(m => m.type === 'audio').length} tracks)</span>
-                </h3>
-              </div>
-              {isLoadingCloud ? (
-                <div className="text-center py-4">
-                  <i className="fas fa-circle-notch fa-spin text-blue-400"></i>
-                  <p className="text-[6px] text-gray-400 mt-1">Loading cloud tracks...</p>
-                </div>
-              ) : cloudMedia.filter(m => m.type === 'audio').length > 0 ? (
-                <div className="grid gap-2">
-                  {cloudMedia.filter(m => m.type === 'audio').map(item => (
-                    <div key={item.id} className="bg-blue-50 p-3 rounded-xl border border-blue-100 flex items-center justify-between shadow-sm">
-                      <div className="flex items-center space-x-3 truncate pr-4">
-                        <div className="w-7 h-7 bg-blue-500 rounded-full flex items-center justify-center shrink-0">
-                          <i className="fas fa-cloud text-white text-[8px]"></i>
-                        </div>
-                        <div className="truncate">
-                          <p className="text-[9px] font-bold text-blue-900 truncate">{item.name}</p>
-                          <p className="text-[6px] text-blue-400 truncate">☁️ Cloud — plays on all devices</p>
-                        </div>
-                      </div>
-                      <div className="flex space-x-1 shrink-0">
-                        <button onClick={() => onPlayTrack(item)} className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center hover:bg-blue-200">
-                          <i className="fas fa-play text-[8px]"></i>
-                        </button>
-                        <a href={item.url} target="_blank" rel="noopener noreferrer" className="w-7 h-7 bg-green-50 text-green-600 rounded-full flex items-center justify-center hover:bg-green-100">
-                          <i className="fas fa-external-link-alt text-[8px]"></i>
-                        </a>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="bg-blue-50 rounded-xl border border-dashed border-blue-200 p-6 text-center">
-                  <i className="fas fa-cloud-upload-alt text-2xl text-blue-200 mb-2 block"></i>
-                  <p className="text-[7px] text-blue-300 font-black uppercase">No cloud tracks yet</p>
-                  <p className="text-[6px] text-blue-200">Upload audio above to add tracks to the cloud</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Local Library */}
-          <div className="space-y-2">
-            <h3 className="text-[7px] font-black uppercase text-gray-500 tracking-widest px-1 flex items-center space-x-1">
-              <i className="fas fa-hdd text-gray-400"></i>
-              <span>Local Library ({mediaList.filter(m => m.type === 'audio').length} tracks)</span>
-            </h3>
-            <div className="grid gap-2">
-              {mediaList.filter(m => m.type === 'audio').map(item => (
-                <div key={item.id} className="bg-white p-3 rounded-xl border border-green-50 flex items-center justify-between shadow-sm">
-                  <div className="flex items-center space-x-3 truncate pr-4">
-                    <i className="fas fa-music text-xs text-green-600"></i>
-                    <div className="truncate">
-                      <p className="text-[9px] font-bold text-green-950 truncate">{item.name}</p>
-                      <p className="text-[6px] text-gray-400">📱 Local — only on this device</p>
-                    </div>
-                  </div>
-                  <div className="flex space-x-1">
-                    <button onClick={() => onPlayTrack(item)} className="w-7 h-7 bg-green-50 text-green-600 rounded-full flex items-center justify-center"><i className="fas fa-play text-[8px]"></i></button>
-                    <button onClick={() => dbService.deleteMedia(item.id).then(loadData)} className="w-7 h-7 bg-red-50 text-red-500 rounded-full flex items-center justify-center"><i className="fas fa-trash-alt text-[8px]"></i></button>
-                  </div>
-                </div>
-              ))}
-              {mediaList.filter(m => m.type === 'audio').length === 0 && (
-                <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-6 text-center">
-                  <i className="fas fa-music text-2xl text-gray-200 mb-2 block"></i>
-                  <p className="text-[7px] text-gray-300 font-black uppercase">No local tracks</p>
-                </div>
-              )}
-            </div>
+            ))}
           </div>
+
+          {/* ── AUDIO TAB ── */}
+          {mediaSubTab === 'audio' && (
+            <div className="space-y-3">
+              {/* Upload + Master Play + Master Delete */}
+              <div className="flex space-x-2">
+                <button onClick={() => triggerUpload('audio/*')}
+                  className="flex-1 bg-[#008751] text-white py-2.5 rounded-xl flex items-center justify-center space-x-1 shadow active:scale-95">
+                  <i className="fas fa-cloud-upload-alt text-[10px]"></i>
+                  <span className="text-[8px] font-black uppercase">Upload Audio</span>
+                </button>
+                <button onClick={() => {
+                  const allAudio = [...cloudMedia.filter(m => m.type === 'audio'), ...mediaList.filter(m => m.type === 'audio' && m.url?.startsWith('http'))];
+                  if (allAudio.length > 0) onPlayTrack(allAudio[Math.floor(Math.random() * allAudio.length)]);
+                }}
+                  className="flex-1 bg-green-600 text-white py-2.5 rounded-xl flex items-center justify-center space-x-1 shadow active:scale-95">
+                  <i className="fas fa-play text-[10px]"></i>
+                  <span className="text-[8px] font-black uppercase">Play All</span>
+                </button>
+              </div>
+
+              {/* Cloud status */}
+              <div className={`px-3 py-2 rounded-xl flex items-center justify-between ${hasApi() ? 'bg-blue-50 border border-blue-200' : 'bg-yellow-50 border border-yellow-200'}`}>
+                <div className="flex items-center space-x-2">
+                  <i className={`fas fa-cloud text-sm ${hasApi() ? 'text-blue-500' : 'text-yellow-500'}`}></i>
+                  <div>
+                    <p className={`text-[7px] font-black uppercase ${hasApi() ? 'text-blue-700' : 'text-yellow-700'}`}>{hasApi() ? 'Cloud Sync Active' : 'Local Only'}</p>
+                    <p className={`text-[6px] ${hasApi() ? 'text-blue-500' : 'text-yellow-600'}`}>{hasApi() ? 'All uploads sync to cloud automatically' : 'Add Cloudinary keys to enable cloud sync'}</p>
+                  </div>
+                </div>
+                <button onClick={loadCloudMedia} className="text-blue-500"><i className={`fas fa-sync-alt text-[10px] ${isLoadingCloud ? 'animate-spin' : ''}`}></i></button>
+              </div>
+
+              {/* Unified track list — cloud + local merged */}
+              {(() => {
+                const cloudAudio = cloudMedia.filter(m => m.type === 'audio');
+                const localAudio = mediaList.filter(m => m.type === 'audio');
+                // Merge: cloud items first, then local-only items not in cloud
+                const cloudIds = new Set(cloudAudio.map(c => c.id));
+                const localOnly = localAudio.filter(l => !cloudIds.has(l.id) && !cloudAudio.find(c => c.name === l.name));
+                const allTracks = [...cloudAudio, ...localOnly];
+                return (
+                  <div className="space-y-2">
+                    {/* Master delete */}
+                    {allTracks.length > 0 && (
+                      <div className="flex items-center justify-between px-1">
+                        <span className="text-[7px] font-black uppercase text-gray-500">{allTracks.length} tracks</span>
+                        <button onClick={async () => {
+                          if (!confirm('Delete ALL audio tracks? This cannot be undone.')) return;
+                          // Delete all local
+                          for (const t of localAudio) await dbService.deleteMedia(t.id);
+                          // Delete all cloud
+                          if (hasApi()) {
+                            const remaining = (await getSharedMedia()).filter(m => m.type !== 'audio');
+                            await fetch(`${import.meta.env.VITE_API_URL}/media`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(remaining) });
+                          }
+                          await loadData(); await loadCloudMedia();
+                          setStatusMsg('🗑 All audio deleted');
+                          setTimeout(() => setStatusMsg(''), 3000);
+                        }} className="flex items-center space-x-1 px-2 py-1 bg-red-50 text-red-500 rounded-lg text-[6px] font-black uppercase hover:bg-red-100">
+                          <i className="fas fa-trash text-[7px]"></i><span>Delete All</span>
+                        </button>
+                      </div>
+                    )}
+                    {allTracks.length === 0 ? (
+                      <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-8 text-center">
+                        <i className="fas fa-music text-2xl text-gray-200 mb-2 block"></i>
+                        <p className="text-[7px] text-gray-300 font-black uppercase">No audio tracks yet</p>
+                      </div>
+                    ) : allTracks.map(item => {
+                      const isCloud = item.url?.startsWith('http');
+                      return (
+                        <div key={item.id} className={`p-3 rounded-xl border flex items-center justify-between shadow-sm ${isCloud ? 'bg-blue-50 border-blue-100' : 'bg-white border-green-50'}`}>
+                          <div className="flex items-center space-x-2 truncate pr-2">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${isCloud ? 'bg-blue-500' : 'bg-gray-200'}`}>
+                              <i className={`fas ${isCloud ? 'fa-cloud' : 'fa-hdd'} text-white text-[7px]`}></i>
+                            </div>
+                            <div className="truncate">
+                              <p className="text-[9px] font-bold text-gray-900 truncate">{item.name.replace(/\.(mp3|wav|m4a|aac|ogg|flac)$/i, '')}</p>
+                              <p className={`text-[6px] ${isCloud ? 'text-blue-400' : 'text-gray-400'}`}>{isCloud ? '☁️ Cloud' : '📱 Local only'}</p>
+                            </div>
+                          </div>
+                          <div className="flex space-x-1 shrink-0">
+                            <button onClick={() => onPlayTrack(item)} className={`w-7 h-7 rounded-full flex items-center justify-center ${isCloud ? 'bg-blue-100 text-blue-600' : 'bg-green-50 text-green-600'}`}>
+                              <i className="fas fa-play text-[8px]"></i>
+                            </button>
+                            <button onClick={async () => {
+                              // Delete local
+                              await dbService.deleteMedia(item.id);
+                              // Delete from cloud if it's there
+                              if (hasApi() && isCloud) {
+                                const all = await getSharedMedia();
+                                const updated = all.filter((m: any) => m.id !== item.id);
+                                await fetch(`${import.meta.env.VITE_API_URL}/media`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+                              }
+                              await loadData(); await loadCloudMedia();
+                            }} className="w-7 h-7 bg-red-50 text-red-400 rounded-full flex items-center justify-center hover:bg-red-100">
+                              <i className="fas fa-trash text-[7px]"></i>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* ── VIDEO TAB ── */}
+          {mediaSubTab === 'video' && (
+            <div className="space-y-3">
+              <div className="flex space-x-2">
+                <button onClick={() => triggerUpload('video/*')}
+                  className="flex-1 bg-purple-600 text-white py-2.5 rounded-xl flex items-center justify-center space-x-1 shadow active:scale-95">
+                  <i className="fas fa-cloud-upload-alt text-[10px]"></i>
+                  <span className="text-[8px] font-black uppercase">Upload Video</span>
+                </button>
+              </div>
+              {(() => {
+                const videos = mediaList.filter(m => m.type === 'video' || m.type === 'youtube' || m.type === 'iptv');
+                return (
+                  <div className="space-y-2">
+                    {videos.length > 0 && (
+                      <div className="flex items-center justify-between px-1">
+                        <span className="text-[7px] font-black uppercase text-gray-500">{videos.length} videos</span>
+                        <button onClick={async () => {
+                          if (!confirm('Delete ALL videos?')) return;
+                          for (const v of videos) await dbService.deleteMedia(v.id);
+                          await loadData();
+                          setStatusMsg('🗑 All videos deleted');
+                          setTimeout(() => setStatusMsg(''), 3000);
+                        }} className="flex items-center space-x-1 px-2 py-1 bg-red-50 text-red-500 rounded-lg text-[6px] font-black uppercase hover:bg-red-100">
+                          <i className="fas fa-trash text-[7px]"></i><span>Delete All</span>
+                        </button>
+                      </div>
+                    )}
+                    {videos.length === 0 ? (
+                      <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-8 text-center">
+                        <i className="fas fa-film text-2xl text-gray-200 mb-2 block"></i>
+                        <p className="text-[7px] text-gray-300 font-black uppercase">No videos yet — add from TV tab</p>
+                      </div>
+                    ) : videos.map(item => (
+                      <div key={item.id} className="bg-white p-3 rounded-xl border border-purple-50 flex items-center justify-between shadow-sm">
+                        <div className="flex items-center space-x-2 truncate pr-2">
+                          <div className="w-7 h-7 bg-purple-100 rounded-full flex items-center justify-center shrink-0">
+                            <i className={`fas ${item.type === 'youtube' ? 'fa-youtube' : item.type === 'iptv' ? 'fa-satellite-dish' : 'fa-film'} text-purple-500 text-[7px]`}></i>
+                          </div>
+                          <div className="truncate">
+                            <p className="text-[9px] font-bold text-gray-900 truncate">{item.name}</p>
+                            <p className="text-[6px] text-gray-400 uppercase">{item.type}{item.isLive ? ' · 🔴 Live' : ''}</p>
+                          </div>
+                        </div>
+                        <button onClick={async () => {
+                          await dbService.deleteMedia(item.id);
+                          await loadData();
+                        }} className="w-7 h-7 bg-red-50 text-red-400 rounded-full flex items-center justify-center shrink-0">
+                          <i className="fas fa-trash text-[7px]"></i>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* ── ADS TAB ── */}
+          {(mediaSubTab as string) === 'ads' && (
+            <div className="space-y-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                <h3 className="text-[8px] font-black uppercase text-amber-700 flex items-center space-x-1">
+                  <i className="fas fa-ad text-amber-500"></i><span>Ad Schedule</span>
+                </h3>
+                <p className="text-[6px] text-amber-600">Set how often ads appear between videos on the Live Monitor</p>
+                <div className="flex items-center space-x-2">
+                  <span className="text-[7px] text-gray-600 font-black">Show ad every</span>
+                  <select
+                    value={adInterval}
+                    onChange={e => { setAdInterval(Number(e.target.value)); localStorage.setItem('ndr_ad_interval', e.target.value); }}
+                    className="bg-white border border-amber-200 rounded-lg px-2 py-1 text-[8px] font-black outline-none"
+                  >
+                    <option value={1}>1 video</option>
+                    <option value={2}>2 videos</option>
+                    <option value={3}>3 videos</option>
+                    <option value={5}>5 videos</option>
+                    <option value={10}>10 videos</option>
+                    <option value={0}>Never</option>
+                  </select>
+                  <span className="text-[7px] text-gray-600 font-black">played</span>
+                </div>
+              </div>
+
+              <button onClick={() => triggerUpload('video/*,image/*')}
+                className="w-full bg-amber-500 text-white py-2.5 rounded-xl flex items-center justify-center space-x-1 shadow active:scale-95">
+                <i className="fas fa-cloud-upload-alt text-[10px]"></i>
+                <span className="text-[8px] font-black uppercase">Upload Ad (Video/Image)</span>
+              </button>
+
+              {/* Ad library — images and videos marked as ads */}
+              {(() => {
+                const ads = mediaList.filter(m => m.type === 'image' || (m.type === 'video' && m.sponsorName));
+                return ads.length === 0 ? (
+                  <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-8 text-center">
+                    <i className="fas fa-ad text-2xl text-gray-200 mb-2 block"></i>
+                    <p className="text-[7px] text-gray-300 font-black uppercase">No ads yet</p>
+                    <p className="text-[6px] text-gray-300">Upload images or videos above to use as ads</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {ads.map(item => (
+                      <div key={item.id} className="bg-amber-50 p-3 rounded-xl border border-amber-100 flex items-center justify-between">
+                        <div className="flex items-center space-x-2 truncate pr-2">
+                          <i className={`fas ${item.type === 'image' ? 'fa-image' : 'fa-film'} text-amber-500 text-sm shrink-0`}></i>
+                          <p className="text-[9px] font-bold text-gray-900 truncate">{item.name}</p>
+                        </div>
+                        <button onClick={async () => { await dbService.deleteMedia(item.id); await loadData(); }}
+                          className="w-7 h-7 bg-red-50 text-red-400 rounded-full flex items-center justify-center shrink-0">
+                          <i className="fas fa-trash text-[7px]"></i>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
         </div>
       )}
       
