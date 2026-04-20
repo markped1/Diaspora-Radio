@@ -45,15 +45,19 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
     }
 
     const isHls = url.includes('.m3u8');
+    // Chrome supports HLS natively — use native player to avoid hls.js CORS issues on Chrome
+    const isChrome = /Chrome/.test(navigator.userAgent) && !/Edg|Firefox/.test(navigator.userAgent);
+    const useNativeHls = video.canPlayType('application/vnd.apple.mpegurl') || isChrome;
 
-    if (isHls && Hls.isSupported()) {
+    if (isHls && Hls.isSupported() && !useNativeHls) {
+      // Firefox, Edge — use hls.js
       const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
       hlsRef.current = hls;
       hls.loadSource(url);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        video.muted = true; // must be muted for autoplay
+        video.muted = true;
         if (autoPlay) tryPlay(video);
       });
 
@@ -64,13 +68,8 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
           onError?.();
         }
       });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari native HLS
-      video.src = url;
-      video.muted = true;
-      video.load();
-      if (autoPlay) tryPlay(video);
     } else {
+      // Chrome (native HLS), Safari, or non-HLS
       video.src = url;
       video.muted = true;
       video.load();
