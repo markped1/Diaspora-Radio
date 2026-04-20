@@ -311,10 +311,9 @@ const App: React.FC = () => {
   const handlePlayAll = () => {
     setHasInteracted(true);
     if (audioPlaylist.length === 0) {
-      // No tracks — nothing to play, don't toggle state
       return;
     }
-    // Prefer cloud tracks (http URLs) over local blobs
+    // Use all tracks — cloud first, then local blobs
     const cloudTracks = audioPlaylist.filter(t => t.url?.startsWith('http'));
     const pool = cloudTracks.length > 0 ? cloudTracks : audioPlaylist;
     const track = isShuffle ? pool[Math.floor(Math.random() * pool.length)] : pool[0];
@@ -322,21 +321,21 @@ const App: React.FC = () => {
     setActiveTrackUrl(track.url);
     setCurrentTrackName(cleanTrackName(track.name));
     setIsRadioPlaying(true);
-    // Push to cloud — use cloud URL if available, otherwise skip (blob URLs don't work for listeners)
-    const pushUrl = track.url.startsWith('http') ? track.url : null;
-    if (hasApi() && pushUrl) {
-      setLiveTrack({ url: pushUrl, name: cleanTrackName(track.name) }).catch(() => {});
-    } else if (hasApi() && !pushUrl) {
-      // Local file — check if cloud version exists in shared media
+    // Push to cloud only if it's a cloud URL
+    if (hasApi() && track.url?.startsWith('http')) {
+      setLiveTrack({ url: track.url, name: cleanTrackName(track.name) }).catch(() => {});
+    } else if (hasApi()) {
+      // Local blob — check if Cloudinary version exists
       getSharedMedia().then(cloudItems => {
-        const cloudVersion = cloudItems.find(c => c.name === track.name && c.url.startsWith('http'));
+        const cloudVersion = cloudItems.find(c =>
+          c.name === track.name && c.url?.startsWith('http')
+        );
         if (cloudVersion) {
           setLiveTrack({ url: cloudVersion.url, name: cleanTrackName(track.name) }).catch(() => {});
         }
       }).catch(() => {});
     }
   };
-
   const handlePushBroadcast = async (voiceText: string) => {
     if (voiceText.trim()) {
       const intro = await getJingleAudio(JINGLE_1);
