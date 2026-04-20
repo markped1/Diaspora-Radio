@@ -100,18 +100,16 @@ const App: React.FC = () => {
       // Sync cloud state in background — non-blocking, doesn't slow down UI
       if (hasApi()) {
         getLiveState().then(live => {
-          // Admin control: sync track to all listeners
-          if (live.track?.url?.startsWith('http')) {
-            // Admin is playing a cloud track — update listener
-            setActiveTrackUrl(live.track.url);
-            setCurrentTrackName(live.track.name || '');
-            // Never force autoplay — let user tap play (required by all browsers except Chrome)
-            // Just update the URL so when they tap play it starts the right track
-          } else if (live.track === null) {
-            // Admin stopped — stop listener too
-            setActiveTrackUrl(null);
-            setCurrentTrackName('');
-            setIsRadioPlaying(false);
+          // Sync cloud track to LISTENERS only — Admin is the source of truth
+          if (role === UserRole.LISTENER) {
+            if (live.track?.url?.startsWith('http')) {
+              setActiveTrackUrl(live.track.url);
+              setCurrentTrackName(live.track.name || '');
+            } else if (live.track === null) {
+              setActiveTrackUrl(null);
+              setCurrentTrackName('');
+              setIsRadioPlaying(false);
+            }
           }
           if (live.messages?.length) setAdminMessages(live.messages);
           // Sync live TV to sponsored media so ListenerView shows it
@@ -317,6 +315,7 @@ const App: React.FC = () => {
     const cloudTracks = audioPlaylist.filter(t => t.url?.startsWith('http'));
     const pool = cloudTracks.length > 0 ? cloudTracks : audioPlaylist;
     const track = isShuffle ? pool[Math.floor(Math.random() * pool.length)] : pool[0];
+    
     setActiveTrackId(track.id);
     setActiveTrackUrl(track.url);
     setCurrentTrackName(cleanTrackName(track.name));
@@ -395,15 +394,13 @@ const App: React.FC = () => {
           <AdminView
             onRefreshData={fetchData} logs={logs} onPlayTrack={(t) => {
               setHasInteracted(true);
-              // Prefer cloud URL if available, fall back to local blob
-              const url = t.url?.startsWith('http') ? t.url : t.url;
               setActiveTrackId(t.id);
-              setActiveTrackUrl(url);
+              setActiveTrackUrl(t.url);
               setCurrentTrackName(cleanTrackName(t.name));
               setIsRadioPlaying(true);
               // Push to cloud if it's a cloud URL
-              if (hasApi() && url?.startsWith('http')) {
-                setLiveTrack({ url, name: cleanTrackName(t.name) }).catch(() => {});
+              if (hasApi() && t.url?.startsWith('http')) {
+                setLiveTrack({ url: t.url, name: cleanTrackName(t.name) }).catch(() => {});
               }
             }}
             isRadioPlaying={isRadioPlaying} onToggleRadio={() => {
