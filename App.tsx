@@ -245,8 +245,8 @@ const App: React.FC = () => {
     const interactionHandler = () => setHasInteracted(true);
     window.addEventListener('click', interactionHandler, { once: true });
 
-    // Poll cloud state every 15 seconds so listeners stay in sync with admin
-    const syncInterval = hasApi() ? setInterval(() => fetchData(), 15000) : null;
+    // Poll cloud state every 30 seconds so listeners stay in sync with admin
+    const syncInterval = hasApi() ? setInterval(() => fetchData(), 30000) : null;
 
     return () => {
       window.removeEventListener('click', interactionHandler);

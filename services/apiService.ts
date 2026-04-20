@@ -16,6 +16,7 @@ async function apiFetch(path: string, options: RequestInit = {}): Promise<any> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...options.headers },
+    signal: AbortSignal.timeout(3000), // 3 second timeout — never block the UI
   });
   if (!res.ok) throw new Error(`API ${path} failed: ${res.status}`);
   return res.json();
