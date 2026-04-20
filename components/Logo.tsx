@@ -10,10 +10,10 @@ interface LogoProps {
 }
 
 const Logo: React.FC<LogoProps> = ({ size = 'md', analyser, isPlaying = false, isJingle = false }) => {
-  const scale = size === 'sm' ? 0.75 : size === 'lg' ? 0.60 : 0.85;
+  const scale = size === 'sm' ? 0.75 : size === 'md' ? 0.85 : 1.0;
   
   return (
-    <div className={`flex flex-col items-center w-full mx-auto overflow-hidden rounded-[30px] shadow-xl bg-white aspect-square relative transition-all duration-500 ${isJingle ? 'ring-4 ring-amber-400 shadow-[0_0_30px_rgba(251,191,36,0.4)] scale-105' : ''}`} style={{ transform: `scale(${scale})` }}>
+    <div className={`flex flex-col items-center w-full overflow-hidden rounded-none shadow-xl bg-white aspect-square relative transition-all duration-500 ${isJingle ? 'ring-4 ring-amber-400 shadow-[0_0_30px_rgba(251,191,36,0.4)]' : ''}`} style={{ transform: size !== 'lg' ? `scale(${scale})` : undefined }}>
       {/* Background: Nigerian Flag Stripes */}
       <div className="absolute inset-0 flex h-full w-full pointer-events-none">
         <div className="flex-1 bg-[#008751]"></div>

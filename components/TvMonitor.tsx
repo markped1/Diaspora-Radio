@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { MediaFile, SocialLink } from '../types';
 import { dbService } from '../services/dbService';
 import IptvPlayer from './IptvPlayer';
+import { setLiveTv, hasApi } from '../services/apiService';
 
 interface TvMonitorProps {
   mediaList: MediaFile[];
@@ -166,6 +167,18 @@ const TvMonitor: React.FC<TvMonitorProps> = ({ mediaList, onMediaUpdated }) => {
         }
         await dbService.updateMedia(updated);
       }
+
+      // Sync live TV to cloud so all listeners see it
+      if (hasApi()) {
+        await setLiveTv({
+          url: selected.url,
+          name: selected.name,
+          type: selected.type,
+          caption: caption.trim(),
+          youtubeId: selected.youtubeId || null,
+        } as any).catch(() => {});
+      }
+
       setFeedback('✅ Pushed live to listener screen!');
       onMediaUpdated();
     } catch {
@@ -203,6 +216,8 @@ const TvMonitor: React.FC<TvMonitorProps> = ({ mediaList, onMediaUpdated }) => {
 
   const handleTakeOffline = async (item: MediaFile) => {
     await dbService.updateMedia({ ...item, isLive: false });
+    // Clear cloud TV state so listeners see off-air
+    if (hasApi()) setLiveTv(null).catch(() => {});
     setFeedback('Taken offline.');
     onMediaUpdated();
     setTimeout(() => setFeedback(''), 2000);

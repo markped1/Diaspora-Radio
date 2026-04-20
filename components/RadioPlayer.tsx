@@ -410,7 +410,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     <div className="flex flex-col items-center justify-center space-y-2 w-full">
       <Logo size="lg" analyser={analyser} isPlaying={isPlaying} />
 
-      <div className="w-full px-4 -mt-8 relative z-20">
+      <div className="w-full px-0 -mt-4 relative z-20">
         <div className="h-1 w-full bg-green-100 rounded-full overflow-hidden">
           <div className="h-full bg-[#008751] transition-all duration-300" style={{ width: `${progress}%` }}></div>
         </div>

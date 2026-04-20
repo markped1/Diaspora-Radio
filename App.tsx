@@ -114,6 +114,26 @@ const App: React.FC = () => {
             setIsRadioPlaying(false);
           }
           if (live.messages?.length) setAdminMessages(live.messages);
+          // Sync live TV to sponsored media so ListenerView shows it
+          if (live.tv?.url) {
+            const cloudTv: MediaFile = {
+              id: 'cloud-tv-live',
+              name: live.tv.name || 'Live TV',
+              url: live.tv.url,
+              type: (live.tv.type as any) || 'youtube',
+              youtubeId: live.tv.youtubeId || undefined,
+              caption: live.tv.caption || '',
+              timestamp: Date.now(),
+              isLive: true,
+            };
+            setSponsoredMedia(prev => {
+              const withoutCloudTv = prev.filter(m => m.id !== 'cloud-tv-live');
+              return [cloudTv, ...withoutCloudTv];
+            });
+          } else if (live.tv === null) {
+            // Admin took TV offline
+            setSponsoredMedia(prev => prev.filter(m => m.id !== 'cloud-tv-live'));
+          }
         }).catch(() => {});
 
         getSharedMedia().then(cloudMedia => {
