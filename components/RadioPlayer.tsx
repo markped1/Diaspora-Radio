@@ -10,7 +10,6 @@ import {
 } from '../services/aiDjService';
 import { dbService } from '../services/dbService';
 import { hasApi, getLiveState } from '../services/apiService';
-import { DEFAULT_STREAM_URL } from '../constants';
 
 interface RadioPlayerProps {
   onStateChange: (isPlaying: boolean) => void;
@@ -207,15 +206,8 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       return;
     }
 
-    // Find stream URL
-    let streamUrl = activeTrackUrl || dbService.getLiveStreamUrl() || DEFAULT_STREAM_URL;
-    
-    console.log('📻 RadioPlayer: Attempting to play stream:', { 
-      activeTrackUrl, 
-      localFallback: dbService.getLiveStreamUrl(), 
-      globalDefault: DEFAULT_STREAM_URL,
-      finalUrl: streamUrl 
-    });
+    // Find stream URL — check local first, then cloud
+    let streamUrl = activeTrackUrl || dbService.getLiveStreamUrl() || null;
 
     if (!streamUrl && hasApi()) {
       try {
@@ -227,8 +219,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       }
     }
 
-    if (!streamUrl || streamUrl === '') {
-      console.error('RadioPlayer: No valid stream URL found!');
+    if (!streamUrl) {
       setStatus('IDLE');
       setErrorMessage('No stream available. Admin needs to start playing.');
       setTimeout(() => setErrorMessage(''), 3000);
