@@ -16,7 +16,7 @@ async function apiFetch(path: string, options: RequestInit = {}): Promise<any> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...options.headers },
-    signal: AbortSignal.timeout(3000), // 3 second timeout — never block the UI
+    signal: AbortSignal.timeout(8000), // 8 second timeout
   });
   if (!res.ok) throw new Error(`API ${path} failed: ${res.status}`);
   return res.json();
@@ -58,11 +58,18 @@ export async function deleteSharedMedia(id: string): Promise<void> {
 export async function addMediaToCloud(item: { id: string; name: string; url: string; type: string; timestamp: number }): Promise<void> {
   if (!hasApi()) return;
   try {
-    const existing = await getSharedMedia();
+    const existing = await apiFetch('/media');
     const alreadyExists = existing.find((m: any) => m.id === item.id);
     if (!alreadyExists) {
       const updated = [item, ...existing];
-      await apiFetch('/media', { method: 'PUT', body: JSON.stringify(updated) });
+      // Use longer timeout for media writes
+      const res = await fetch(`${API_URL}/media`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) throw new Error(`Media save failed: ${res.status}`);
     }
   } catch (e) {
     console.warn('addMediaToCloud failed:', e);

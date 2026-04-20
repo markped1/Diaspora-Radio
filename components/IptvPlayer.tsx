@@ -1,3 +1,9 @@
+/**
+ * IptvPlayer — plays HLS/M3U8 streams using hls.js on all browsers.
+ * hls.js is used universally (Chrome, Firefox, Edge, Android WebView)
+ * because it handles CORS headers consistently.
+ * Safari uses native HLS as fallback since it doesn't support hls.js MSE.
+ */
 import React, { useRef, useEffect, useState } from 'react';
 import Hls from 'hls.js';
 
@@ -20,17 +26,8 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
-  const [status, setStatus] = useState<'loading' | 'playing' | 'error' | 'paused'>('loading');
+  const [status, setStatus] = useState<'loading' | 'playing' | 'error' | 'blocked'>('loading');
   const [errorMsg, setErrorMsg] = useState('');
-
-  const tryPlay = (video: HTMLVideoElement) => {
-    video.muted = true; // always start muted for autoplay policy
-    video.play().catch(err => {
-      if (err.name === 'NotAllowedError') {
-        setStatus('paused');
-      }
-    });
-  };
 
   useEffect(() => {
     const video = videoRef.current;
@@ -39,60 +36,91 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
     setStatus('loading');
     setErrorMsg('');
 
+    // Destroy previous instance
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
 
-    const isHls = url.includes('.m3u8');
-    // Chrome supports HLS natively — use native player to avoid hls.js CORS issues on Chrome
-    const isChrome = /Chrome/.test(navigator.userAgent) && !/Edg|Firefox/.test(navigator.userAgent);
-    const useNativeHls = video.canPlayType('application/vnd.apple.mpegurl') || isChrome;
+    const isHls = url.includes('.m3u8') || url.includes('m3u8');
 
-    if (isHls && Hls.isSupported() && !useNativeHls) {
-      // Firefox, Edge — use hls.js
-      const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+    const doPlay = () => {
+      video.muted = true; // must be muted for autoplay on all browsers
+      video.play().catch(err => {
+        if (err.name === 'NotAllowedError') {
+          setStatus('blocked'); // show tap-to-play
+        }
+      });
+    };
+
+    if (isHls && Hls.isSupported()) {
+      // Use hls.js on Chrome, Firefox, Edge, Android WebView
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        maxBufferLength: 30,
+        xhrSetup: (xhr) => {
+          // Don't set credentials — avoids CORS preflight issues
+          xhr.withCredentials = false;
+        },
+      });
       hlsRef.current = hls;
       hls.loadSource(url);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        video.muted = true;
-        if (autoPlay) tryPlay(video);
+        if (autoPlay) doPlay();
       });
 
-      hls.on(Hls.Events.ERROR, (_e, data) => {
+      hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (data.fatal) {
-          setStatus('error');
-          setErrorMsg('Stream unavailable or CORS blocked');
-          onError?.();
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            // Try to recover
+            hls.startLoad();
+          } else {
+            setStatus('error');
+            setErrorMsg('Stream unavailable or CORS blocked');
+            onError?.();
+          }
         }
       });
-    } else {
-      // Chrome (native HLS), Safari, or non-HLS
+
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari — native HLS
       video.src = url;
       video.muted = true;
       video.load();
-      if (autoPlay) tryPlay(video);
+      if (autoPlay) doPlay();
+    } else {
+      // Non-HLS direct URL
+      video.src = url;
+      video.muted = true;
+      video.load();
+      if (autoPlay) doPlay();
     }
 
     return () => {
-      if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
       video.pause();
       video.src = '';
     };
   }, [url]);
 
+  // Sync muted state
   useEffect(() => {
-    if (videoRef.current) videoRef.current.muted = muted;
-  }, [muted]);
+    if (videoRef.current && status === 'playing') {
+      videoRef.current.muted = muted;
+    }
+  }, [muted, status]);
 
   const handleTapToPlay = () => {
     const video = videoRef.current;
     if (!video) return;
-    video.muted = false; // unmute on user gesture
-    video.play().catch(console.warn);
-    setStatus('playing');
+    video.muted = false;
+    video.play().then(() => setStatus('playing')).catch(console.warn);
   };
 
   return (
@@ -108,22 +136,22 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
         onError={() => {
           if (!hlsRef.current) {
             setStatus('error');
-            setErrorMsg('Stream unavailable or CORS blocked');
+            setErrorMsg('Stream unavailable');
             onError?.();
           }
         }}
       />
 
-      {/* Loading */}
+      {/* Loading spinner */}
       {status === 'loading' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 space-y-2">
-          <i className="fas fa-circle-notch fa-spin text-white text-xl"></i>
+          <i className="fas fa-circle-notch fa-spin text-white text-2xl"></i>
           <span className="text-[7px] font-black text-white uppercase tracking-widest">Connecting...</span>
         </div>
       )}
 
-      {/* Tap to play — Chrome autoplay blocked */}
-      {status === 'paused' && (
+      {/* Tap to play (autoplay blocked) */}
+      {status === 'blocked' && (
         <div
           className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 space-y-3 cursor-pointer"
           onClick={handleTapToPlay}
@@ -138,9 +166,9 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
       {/* Error */}
       {status === 'error' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 space-y-2 px-4">
-          <i className="fas fa-exclamation-triangle text-red-400 text-xl"></i>
+          <i className="fas fa-exclamation-triangle text-red-400 text-2xl"></i>
           <span className="text-[7px] font-black text-red-300 uppercase tracking-widest text-center">{errorMsg}</span>
-          <span className="text-[6px] text-gray-500 text-center">Stream may be offline or CORS-blocked</span>
+          <span className="text-[6px] text-gray-500 text-center">Stream may be offline or geo-blocked</span>
         </div>
       )}
 
