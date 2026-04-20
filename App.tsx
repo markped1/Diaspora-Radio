@@ -347,7 +347,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex-grow pt-1 px-1.5">
+      <main className="flex-grow">
         <RadioPlayer
           onStateChange={setIsRadioPlaying}
           activeTrackUrl={activeTrackUrl}
@@ -359,13 +359,16 @@ const App: React.FC = () => {
         />
 
         {role === UserRole.LISTENER ? (
+          <div className="px-1.5 pt-1">
           <ListenerView
             news={news} onStateChange={setIsRadioPlaying} isRadioPlaying={isRadioPlaying}
             sponsoredVideos={sponsoredMedia} activeTrackUrl={activeTrackUrl}
             currentTrackName={currentTrackName} adminMessages={adminMessages} reports={reports}
             onPlayTrack={(t) => { setHasInteracted(true); setActiveTrackId(t.id); setActiveTrackUrl(t.url); setCurrentTrackName(cleanTrackName(t.name)); setIsRadioPlaying(true); }}
           />
+          </div>
         ) : (
+          <div className="px-1.5 pt-1">
           <AdminView
             onRefreshData={fetchData} logs={logs} onPlayTrack={(t) => { setHasInteracted(true); setActiveTrackId(t.id); setActiveTrackUrl(t.url); setCurrentTrackName(cleanTrackName(t.name)); setIsRadioPlaying(true); }}
             isRadioPlaying={isRadioPlaying} onToggleRadio={() => {
@@ -380,6 +383,7 @@ const App: React.FC = () => {
             news={news} onTriggerFullBulletin={() => runScheduledBroadcast(false)}
             onRefreshNews={refreshNews}
           />
+          </div>
         )}
       </main>
 

@@ -407,86 +407,75 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   };
 
   return (
-    <div className="flex flex-col items-center justify-center space-y-2 w-full">
-      <Logo size="lg" analyser={analyser} isPlaying={isPlaying} />
+    <div className="w-full flex flex-col">
+      {/* Logo — full width, no gap from header */}
+      <Logo size="lg" analyser={analyser} isPlaying={isPlaying} isJingle={isBroadcasting} />
 
-      <div className="w-full px-8 -mt-8 relative z-20">
-        <div className="h-1 w-full bg-green-100 rounded-full overflow-hidden">
+      {/* Progress bar — directly under logo, no gap */}
+      <div className="w-full px-0 bg-gray-100">
+        <div className="h-1 w-full bg-gray-200 overflow-hidden">
           <div className="h-full bg-[#008751] transition-all duration-300" style={{ width: `${progress}%` }}></div>
         </div>
         {duration > 0 && isFinite(duration) && (
-          <div className="flex justify-between mt-1 px-1">
+          <div className="flex justify-between px-3 py-0.5">
             <span className="text-[6px] font-bold text-green-700">{formatTime(currentTime)}</span>
             <span className="text-[6px] font-bold text-green-700">{formatTime(duration)}</span>
           </div>
         )}
       </div>
 
-      <div className="flex flex-col items-center space-y-3 relative z-20 w-full px-12">
-        {/* Track Info Display */}
-        <div className={`px-4 py-2 rounded-full border w-full overflow-hidden shadow-inner flex items-center justify-center text-center ${
-          isBroadcasting ? 'bg-red-50 border-red-200' : 'bg-[#008751]/10 border-green-200/50'
-        }`}>
-          <span className={`text-[7px] font-black uppercase tracking-widest line-clamp-1 ${
-            isBroadcasting ? 'text-red-700' : 'text-green-800'
-          }`}>
-            {isBroadcasting
-              ? (isBroadcastPaused() ? '⏸ BROADCAST PAUSED' : '🔴 LIVE BROADCAST — TAP TO PAUSE')
-              : (activeTrackUrl ? `NOW PLAYING: ${currentTrackName}` : '📻 TAP TO PLAY')}
-          </span>
-        </div>
+      {/* Controls row — compact, full width */}
+      <div className="w-full px-3 py-2 bg-white border-b border-green-50 flex items-center space-x-2">
 
-        {/* Error Message */}
-        {errorMessage && (
-          <div className="bg-red-50 px-3 py-1.5 rounded-lg border border-red-200 w-full">
-            <p className="text-[8px] font-semibold text-red-600 text-center">{errorMessage}</p>
-          </div>
+        {/* Play/Pause */}
+        <button
+          onClick={handlePlayPause}
+          disabled={status === 'LOADING' && !isBroadcasting}
+          className={`w-11 h-11 rounded-full flex items-center justify-center shadow-md active:scale-95 transition-all border-2 border-white shrink-0 ${
+            isBroadcasting ? (isBroadcastPaused() ? 'bg-amber-500' : 'bg-red-500')
+            : status === 'ERROR' ? 'bg-red-500' : 'bg-[#008751]'
+          } text-white`}
+        >
+          {status === 'LOADING' && !isBroadcasting ? <i className="fas fa-circle-notch fa-spin text-sm"></i>
+            : isBroadcasting ? <i className={`fas ${isBroadcastPaused() ? 'fa-play' : 'fa-pause'} text-sm`}></i>
+            : status === 'ERROR' ? <i className="fas fa-exclamation-triangle text-sm"></i>
+            : isPlaying ? <i className="fas fa-pause text-sm"></i>
+            : <i className="fas fa-play text-sm ml-0.5"></i>}
+        </button>
+
+        {/* Stop broadcast */}
+        {isBroadcasting && (
+          <button onClick={handleStop}
+            className="w-9 h-9 rounded-full bg-gray-800 text-white flex items-center justify-center shadow active:scale-95 shrink-0">
+            <i className="fas fa-stop text-xs"></i>
+          </button>
         )}
 
-        {/* Play/Pause button — controls both music and broadcast */}
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={handlePlayPause}
-            disabled={(status === 'LOADING' && !isBroadcasting)}
-            className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all border-4 border-white ${
-              isBroadcasting
-                ? (isBroadcastPaused() ? 'bg-amber-500' : 'bg-red-500')
-                : status === 'ERROR' ? 'bg-red-500' : 'bg-[#008751]'
-            } text-white`}
-          >
-            {status === 'LOADING' && !isBroadcasting
-              ? <i className="fas fa-circle-notch fa-spin"></i>
-              : isBroadcasting
-                ? <i className={`fas ${isBroadcastPaused() ? 'fa-play' : 'fa-pause'} text-lg`}></i>
-                : status === 'ERROR'
-                  ? <i className="fas fa-exclamation-triangle"></i>
-                  : isPlaying
-                    ? <i className="fas fa-pause text-lg"></i>
-                    : <i className="fas fa-play text-lg ml-1"></i>}
-          </button>
-
-          {/* Stop broadcast button — only shown during broadcast */}
-          {isBroadcasting && (
-            <button
-              onClick={handleStop}
-              className="w-10 h-10 rounded-full bg-gray-800 text-white flex items-center justify-center shadow-lg active:scale-95 border-2 border-white"
-              title="Stop broadcast"
-            >
-              <i className="fas fa-stop text-sm"></i>
-            </button>
-          )}
+        {/* Track info */}
+        <div className={`flex-1 px-2 py-1.5 rounded-lg overflow-hidden ${isBroadcasting ? 'bg-red-50' : 'bg-[#008751]/8'}`}>
+          <p className={`text-[7px] font-black uppercase tracking-widest truncate ${isBroadcasting ? 'text-red-700' : 'text-green-800'}`}>
+            {isBroadcasting
+              ? (isBroadcastPaused() ? '⏸ PAUSED' : '🔴 LIVE — TAP TO PAUSE')
+              : (activeTrackUrl ? currentTrackName || 'Now Playing' : '📻 Tap to Play')}
+          </p>
         </div>
 
-        <div className="w-32 flex items-center space-x-2">
+        {/* Volume */}
+        <div className="flex items-center space-x-1 shrink-0">
           <i className="fas fa-volume-down text-green-600 text-[8px]"></i>
-          <input
-            type="range" min="0" max="1" step="0.01" value={volume}
-            onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-            className="flex-grow h-0.5 bg-green-100 rounded-lg appearance-none accent-[#008751]"
-          />
+          <input type="range" min="0" max="1" step="0.05" value={volume}
+            onChange={e => handleVolumeChange(parseFloat(e.target.value))}
+            className="w-16 h-0.5 bg-green-100 rounded-lg appearance-none accent-[#008751]" />
           <i className="fas fa-volume-up text-green-600 text-[8px]"></i>
         </div>
       </div>
+
+      {/* Error */}
+      {errorMessage && (
+        <div className="bg-red-50 px-3 py-1 border-b border-red-100">
+          <p className="text-[7px] font-semibold text-red-600 text-center">{errorMessage}</p>
+        </div>
+      )}
     </div>
   );
 };
