@@ -128,8 +128,8 @@ const AdminView: React.FC<AdminViewProps> = ({
             const form = new FormData();
             form.append('file', file);
             form.append('upload_preset', uploadPreset);
-            // resource_type goes in the URL for Cloudinary
-            const resourceType = (isAudio || isVideo) ? 'video' : 'image';
+            // Use 'raw' for audio (mp3/wav/etc), 'image' for images, 'video' for video
+            const resourceType = isAudio ? 'raw' : isVideo ? 'video' : 'image';
             const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`, {
               method: 'POST',
               body: form,
@@ -141,6 +141,7 @@ const AdminView: React.FC<AdminViewProps> = ({
               setStatusMsg(`✅ Uploaded: ${file.name}`);
             } else {
               console.warn('Cloudinary error:', data);
+              setStatusMsg(`⚠️ Cloud upload failed for ${file.name}, saving locally`);
             }
           } catch (err) {
             console.warn('Cloudinary upload failed, saving locally:', err);
