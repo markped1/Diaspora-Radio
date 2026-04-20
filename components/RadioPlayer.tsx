@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';import Logo from './Logo';
+import React, { useState, useRef, useEffect } from 'react';
+import Logo from './Logo';
 import {
   isBroadcastActive,
   isBroadcastPaused,
@@ -7,8 +8,6 @@ import {
   stopBroadcast,
   setBroadcastVolume,
 } from '../services/aiDjService';
-import { webSpeechSpeak } from '../services/webSpeechService';
-import { JINGLE_DJ } from '../constants';
 import { dbService } from '../services/dbService';
 import { hasApi, getLiveState } from '../services/apiService';
 
@@ -40,10 +39,8 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   const [duration, setDuration] = useState(0);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const broadcastingRef = useRef(false);
-  const midJingleFiredRef = useRef(false);   // tracks if DJ jingle already played this song
-  const midJingleRunningRef = useRef(false); // prevents double-fire
 
-  // Poll broadcast state — debounced to avoid flicker between segments
+  // Poll broadcast state
   useEffect(() => {
     const poll = setInterval(() => {
       const active = isBroadcastActive();
@@ -55,253 +52,113 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     return () => clearInterval(poll);
   }, []);
 
-  // Reset mid-jingle flag when track changes
-  useEffect(() => {
-    midJingleFiredRef.current = false;
-  }, [activeTrackUrl]);
-
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const isStreamRef = useRef<boolean>(false);
-
+  const loadingUrlRef = useRef<string | null>(null); // track which URL is currently loading
   const onTrackEndedRef = useRef(onTrackEnded);
-  useEffect(() => {
-    onTrackEndedRef.current = onTrackEnded;
-  }, [onTrackEnded]);
+  useEffect(() => { onTrackEndedRef.current = onTrackEnded; }, [onTrackEnded]);
 
   const initAudioContext = () => {
     try {
-      if (!audioRef.current) return;
-
-      // Only use Web Audio API for local files/blobs to avoid CORS silence for streams
-      if (isStreamRef.current) {
-        if (analyser) setAnalyser(null);
-        return;
-      }
-
+      if (!audioRef.current || isStreamRef.current) return;
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
-
       const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(console.warn);
-      }
-
+      if (ctx.state === 'suspended') ctx.resume().catch(console.warn);
       if (!gainNodeRef.current) {
         const gain = ctx.createGain();
         gain.connect(ctx.destination);
         gainNodeRef.current = gain;
       }
-
       if (!sourceRef.current) {
         try {
           sourceRef.current = ctx.createMediaElementSource(audioRef.current);
           const newAnalyser = ctx.createAnalyser();
           newAnalyser.fftSize = 256;
-
           sourceRef.current.connect(newAnalyser);
           newAnalyser.connect(gainNodeRef.current!);
           setAnalyser(newAnalyser);
         } catch (err) {
-          console.warn("MediaElementSource creation ignored (likely CORS):", err);
-          // Fallback handled by the isStreamRef check above
+          console.warn('AudioContext source error:', err);
         }
       }
     } catch (e) {
-      console.error("Audio Initialization Failure:", e);
+      console.error('Audio init error:', e);
     }
   };
 
+  // Create audio element once on mount
   useEffect(() => {
     const audio = new Audio();
     audioRef.current = audio;
-
-    const handlePlay = () => {
-      setStatus('PLAYING');
-      setIsPlaying(true);
-      onStateChange(true);
-      setErrorMessage('');
-    };
-
-    const handlePause = () => {
-      setStatus('IDLE');
-      setIsPlaying(false);
-      onStateChange(false);
-    };
-
-    const handleError = (e: Event) => {
+    audio.addEventListener('play', () => { setStatus('PLAYING'); setIsPlaying(true); onStateChange(true); setErrorMessage(''); });
+    audio.addEventListener('pause', () => { setStatus('IDLE'); setIsPlaying(false); onStateChange(false); });
+    audio.addEventListener('playing', () => { setStatus('PLAYING'); setIsPlaying(true); onStateChange(true); });
+    audio.addEventListener('waiting', () => setStatus('LOADING'));
+    audio.addEventListener('ended', () => onTrackEndedRef.current?.());
+    audio.addEventListener('timeupdate', () => { setCurrentTime(audio.currentTime); });
+    audio.addEventListener('loadedmetadata', () => setDuration(audio.duration));
+    audio.addEventListener('error', (e) => {
       const target = e.target as HTMLAudioElement;
-      let message = 'Playback error';
-
-      if (target.error) {
-        switch (target.error.code) {
-          case MediaError.MEDIA_ERR_ABORTED:
-            message = 'Playback aborted';
-            break;
-          case MediaError.MEDIA_ERR_NETWORK:
-            message = 'Network error - Check your connection';
-            break;
-          case MediaError.MEDIA_ERR_DECODE:
-            message = 'Audio format not supported';
-            break;
-          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            message = 'Stream URL not accessible or invalid';
-            break;
-        }
-      }
-
-      console.error("Audio Playback Error:", message, target.error);
-      setErrorMessage(message);
+      let msg = 'Playback error';
+      if (target.error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) msg = 'Stream URL not accessible';
+      else if (target.error?.code === MediaError.MEDIA_ERR_NETWORK) msg = 'Network error';
+      setErrorMessage(msg);
       setStatus('ERROR');
       setIsPlaying(false);
       onStateChange(false);
-    };
-
-    const handleCanPlay = () => {
-      console.log("Stream ready to play");
-      if (status === 'LOADING') {
-        setStatus('IDLE');
-      }
-    };
-
-    const handleLoadStart = () => {
-      console.log("Loading stream...");
-      setStatus('LOADING');
-    };
-
-    audio.addEventListener('play', handlePlay);
-    audio.addEventListener('pause', handlePause);
-    audio.addEventListener('error', handleError);
-    audio.addEventListener('waiting', () => setStatus('LOADING'));
-    audio.addEventListener('playing', handlePlay);
-    audio.addEventListener('ended', () => onTrackEndedRef.current?.());
-    audio.addEventListener('timeupdate', () => {
-      const t = audio.currentTime;
-      const d = audio.duration;
-      setCurrentTime(t);
-
-      // Mid-song DJ jingle — fires once at 50% of track duration
-      if (
-        d > 10 &&
-        isFinite(d) &&
-        t >= d * 0.5 &&
-        !midJingleFiredRef.current &&
-        !midJingleRunningRef.current &&
-        !isBroadcastActive()
-      ) {
-        midJingleFiredRef.current  = true;
-        midJingleRunningRef.current = true;
-
-        // Duck music, speak jingle, restore
-        const prevVol = audio.volume;
-        audio.volume = Math.max(0, prevVol * 0.15);
-
-        webSpeechSpeak(JINGLE_DJ, { rate: 1.25, pitch: 1.2 }).then(() => {
-          audio.volume = prevVol;
-          midJingleRunningRef.current = false;
-        });
-      }
+      loadingUrlRef.current = null;
     });
-    audio.addEventListener('loadedmetadata', () => setDuration(audio.duration));
-    audio.addEventListener('canplay', handleCanPlay);
-    audio.addEventListener('loadstart', handleLoadStart);
-
-    const targetSrc = activeTrackUrl;
-    if (!targetSrc) {
-      setStatus('IDLE');
-      return;
-    }
-    isStreamRef.current = !targetSrc.startsWith('blob:') && !targetSrc.startsWith('data:');
-
-    // CRITICAL FIX: Don't set crossOrigin for live streams
-    // Many streaming services don't send proper CORS headers
-    if (targetSrc.startsWith('blob:') || targetSrc.startsWith('data:')) {
-      audio.crossOrigin = null;
-    } else {
-      // For online streams, don't set crossOrigin unless needed
-      // This allows the stream to play without CORS restrictions
-      audio.removeAttribute('crossorigin');
-    }
-
-    audio.src = targetSrc;
-    audio.preload = 'none'; // Don't preload streams
-
     return () => {
       audio.pause();
-      audio.src = "";
-      audio.removeAttribute('src');
+      audio.src = '';
       audioRef.current = null;
     };
   }, []);
 
-  const pendingPlayRef = useRef(false);
-
+  // Load and play when URL changes
   useEffect(() => {
-    if (audioRef.current) {
-      const targetSrc = activeTrackUrl;
-      if (!targetSrc) {
-        pendingPlayRef.current = false;
-        audioRef.current.pause();
-        audioRef.current.removeAttribute('src');
-        audioRef.current.load();
-        setStatus('IDLE');
-        setIsPlaying(false);
-        onStateChange(false);
-        setErrorMessage('');
-        return;
-      }
-      // Normalize URL comparison
-      const currentSrc = audioRef.current.src;
-      const isSameSrc = currentSrc === targetSrc || currentSrc.endsWith(targetSrc);
-      if (!isSameSrc) {
-        const isLocal = targetSrc.startsWith('blob:') || targetSrc.startsWith('data:');
-        isStreamRef.current = !isLocal;
+    const audio = audioRef.current;
+    if (!audio) return;
 
-        if (isLocal) {
-          audioRef.current.crossOrigin = null;
-        } else {
-          audioRef.current.removeAttribute('crossorigin');
-        }
-
-        audioRef.current.src = targetSrc;
-        audioRef.current.load();
-        setStatus('LOADING');
-        pendingPlayRef.current = true;
-
-        // Play once ready
-        const onCanPlay = () => {
-          if (!pendingPlayRef.current) return;
-          pendingPlayRef.current = false;
-          if (!isStreamRef.current) initAudioContext();
-          audioRef.current?.play().catch(err => {
-            if (err.name === 'NotAllowedError') {
-              setStatus('IDLE');
-              setErrorMessage('Tap ▶ to play');
-              setTimeout(() => setErrorMessage(''), 4000);
-            } else {
-              setStatus('IDLE');
-            }
-          });
-        };
-        audioRef.current.addEventListener('canplay', onCanPlay, { once: true });
-      }
+    if (!activeTrackUrl) {
+      loadingUrlRef.current = null;
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+      setStatus('IDLE');
+      setIsPlaying(false);
+      onStateChange(false);
+      setErrorMessage('');
+      return;
     }
-  }, [activeTrackUrl]);
 
-  useEffect(() => {
-    if (!audioRef.current) return;
-    if (forcePlaying && audioRef.current.paused && !pendingPlayRef.current) {
-      // Only play if src is loaded and not waiting for canplay
-      if (!audioRef.current.src || audioRef.current.src === window.location.href) {
-        setStatus('IDLE');
-        return;
-      }
-      if (!isStreamRef.current) initAudioContext();
-      audioRef.current.play().catch(err => {
+    // Skip if same URL already loaded/loading
+    if (audio.src === activeTrackUrl || loadingUrlRef.current === activeTrackUrl) return;
+
+    const isLocal = activeTrackUrl.startsWith('blob:') || activeTrackUrl.startsWith('data:');
+    isStreamRef.current = !isLocal;
+    loadingUrlRef.current = activeTrackUrl;
+
+    if (isLocal) audio.crossOrigin = null;
+    else audio.removeAttribute('crossorigin');
+
+    audio.src = activeTrackUrl;
+    audio.load();
+    setStatus('LOADING');
+
+    if (!isStreamRef.current) initAudioContext();
+
+    // Play as soon as enough data is available
+    audio.addEventListener('canplay', function onReady() {
+      audio.removeEventListener('canplay', onReady);
+      if (loadingUrlRef.current !== activeTrackUrl) return; // URL changed, abort
+      audio.play().catch(err => {
         if (err.name === 'NotAllowedError') {
           setStatus('IDLE');
           setErrorMessage('Tap ▶ to play');
@@ -309,118 +166,93 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
         } else {
           setStatus('IDLE');
         }
+        loadingUrlRef.current = null;
       });
-    } else if (!forcePlaying && !audioRef.current.paused) {
-      pendingPlayRef.current = false;
-      audioRef.current.pause();
+    });
+  }, [activeTrackUrl]);
+
+  // Handle pause when forcePlaying goes false
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (!forcePlaying && !audio.paused) {
+      audio.pause();
+      loadingUrlRef.current = null;
     }
   }, [forcePlaying]);
 
+  // Volume control
   useEffect(() => {
-    // Priority: musicVolumeOverride > isDucking > normal volume
-    let targetGain: number;
-    if (musicVolumeOverride !== null) {
-      targetGain = musicVolumeOverride; // Explicit override (0 = stop, 0.15 = duck, 0.30 = soft duck)
-    } else if (isDucking) {
-      targetGain = volume * 0.15;       // Legacy duck for custom broadcasts
-    } else {
-      targetGain = volume;              // Normal playback
-    }
-
-    if (audioRef.current) {
-      audioRef.current.volume = targetGain;
-    }
-    if (gainNodeRef.current && audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      gainNodeRef.current.gain.setTargetAtTime(targetGain, audioContextRef.current.currentTime, 0.1);
+    let gain = musicVolumeOverride !== null ? musicVolumeOverride : isDucking ? volume * 0.15 : volume;
+    if (audioRef.current) audioRef.current.volume = gain;
+    if (gainNodeRef.current && audioContextRef.current?.state !== 'closed') {
+      gainNodeRef.current.gain.setTargetAtTime(gain, audioContextRef.current!.currentTime, 0.1);
     }
   }, [volume, isDucking, musicVolumeOverride]);
 
   const handlePlayPause = async () => {
-    // If a news broadcast is active, pause/resume/stop it
     if (isBroadcasting) {
-      if (isBroadcastPaused()) {
-        resumeBroadcast();
-      } else {
-        pauseBroadcast();
-      }
+      isBroadcastPaused() ? resumeBroadcast() : pauseBroadcast();
+      return;
+    }
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      audio.pause();
       return;
     }
 
-    if (!audioRef.current) return;
-
-    // If no track selected, check cloud for what admin is playing
-    const liveStream = dbService.getLiveStreamUrl();
-    let streamUrl = activeTrackUrl || liveStream || null;
-
-    // If still no URL, try fetching from cloud right now
+    // Find stream URL
+    let streamUrl = activeTrackUrl || dbService.getLiveStreamUrl() || null;
     if (!streamUrl && hasApi()) {
       try {
         setStatus('LOADING');
         const live = await getLiveState();
-        if (live?.track?.url?.startsWith('http')) {
-          streamUrl = live.track.url;
-        }
+        if (live?.track?.url?.startsWith('http')) streamUrl = live.track.url;
       } catch {}
     }
 
     if (!streamUrl) {
       setStatus('IDLE');
-      setErrorMessage('No stream available yet. Admin needs to start playing music.');
+      setErrorMessage('No stream available. Admin needs to start playing.');
       setTimeout(() => setErrorMessage(''), 3000);
       return;
     }
 
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      setStatus('LOADING');
-      setErrorMessage('');
+    setStatus('LOADING');
+    setErrorMessage('');
 
-      // Load stream if not already loaded
-      if (!activeTrackUrl && audioRef.current.src !== streamUrl) {
-        isStreamRef.current = true;
-        audioRef.current.removeAttribute('crossorigin');
-        audioRef.current.src = streamUrl;
-        audioRef.current.load();
-      }
+    if (audio.src !== streamUrl) {
+      isStreamRef.current = true;
+      audio.removeAttribute('crossorigin');
+      audio.src = streamUrl;
+      audio.load();
+      loadingUrlRef.current = streamUrl;
+    }
 
-      if (!isStreamRef.current) initAudioContext();
-      try {
-        await audioRef.current.play();
-      } catch (err: any) {
-        console.error("Play error:", err);
-        setStatus('ERROR');
-        setErrorMessage(err.message || 'Failed to play stream');
-      }
+    try {
+      await audio.play();
+    } catch (err: any) {
+      setStatus('ERROR');
+      setErrorMessage(err.message || 'Failed to play');
+      loadingUrlRef.current = null;
     }
   };
 
   const handleStop = () => {
-    if (isBroadcasting) {
-      stopBroadcast();
-      return;
-    }
-    if (audioRef.current) audioRef.current.pause();
+    if (isBroadcasting) { stopBroadcast(); return; }
+    audioRef.current?.pause();
   };
 
   const handleVolumeChange = (val: number) => {
     setVolume(val);
-    if (isBroadcasting) {
-      // During broadcast: control speech volume directly
-      setBroadcastVolume(val);
-    }
-    // Always update the audio element too (for when broadcast ends)
-    if (audioRef.current && musicVolumeOverride === null) {
-      audioRef.current.volume = val;
-    }
+    if (isBroadcasting) setBroadcastVolume(val);
+    if (audioRef.current && musicVolumeOverride === null) audioRef.current.volume = val;
   };
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const formatTime = (time: number) => {
-    const mins = Math.floor(time / 60);
-    const secs = Math.floor(time % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  const fmt = (t: number) => `${Math.floor(t / 60)}:${Math.floor(t % 60).toString().padStart(2, '0')}`;
 
   return (
     <div className="flex flex-col items-center justify-center space-y-2 w-full">
@@ -428,75 +260,60 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
       <div className="w-full px-0 -mt-4 relative z-20">
         <div className="h-1 w-full bg-green-100 rounded-full overflow-hidden">
-          <div className="h-full bg-[#008751] transition-all duration-300" style={{ width: `${progress}%` }}></div>
+          <div className="h-full bg-[#008751] transition-all duration-300" style={{ width: `${progress}%` }} />
         </div>
         {duration > 0 && isFinite(duration) && (
           <div className="flex justify-between mt-1 px-1">
-            <span className="text-[6px] font-bold text-green-700">{formatTime(currentTime)}</span>
-            <span className="text-[6px] font-bold text-green-700">{formatTime(duration)}</span>
+            <span className="text-[6px] font-bold text-green-700">{fmt(currentTime)}</span>
+            <span className="text-[6px] font-bold text-green-700">{fmt(duration)}</span>
           </div>
         )}
       </div>
 
       <div className="flex flex-col items-center space-y-3 relative z-20 w-full px-12">
-        {/* Track Info Display */}
-        <div className={`px-4 py-2 rounded-full border w-full overflow-hidden shadow-inner flex items-center justify-center text-center ${
-          isBroadcasting ? 'bg-red-50 border-red-200' : 'bg-[#008751]/10 border-green-200/50'
-        }`}>
-          <span className={`text-[7px] font-black uppercase tracking-widest line-clamp-1 ${
-            isBroadcasting ? 'text-red-700' : 'text-green-800'
-          }`}>
+        <div className={`px-4 py-2 rounded-full border w-full overflow-hidden shadow-inner flex items-center justify-center text-center ${isBroadcasting ? 'bg-red-50 border-red-200' : 'bg-[#008751]/10 border-green-200/50'}`}>
+          <span className={`text-[7px] font-black uppercase tracking-widest line-clamp-1 ${isBroadcasting ? 'text-red-700' : 'text-green-800'}`}>
             {isBroadcasting
               ? (isBroadcastPaused() ? '⏸ BROADCAST PAUSED' : '🔴 LIVE BROADCAST — TAP TO PAUSE')
               : (activeTrackUrl ? `NOW PLAYING: ${currentTrackName}` : '📻 TAP ▶ TO LISTEN LIVE')}
           </span>
         </div>
 
-        {/* Error Message */}
         {errorMessage && (
           <div className="bg-red-50 px-3 py-1.5 rounded-lg border border-red-200 w-full">
             <p className="text-[8px] font-semibold text-red-600 text-center">{errorMessage}</p>
           </div>
         )}
 
-        {/* Play/Pause button */}
         <div className="flex items-center space-x-3">
           <button
             onClick={handlePlayPause}
-            disabled={status === 'LOADING' && !isBroadcasting && !!activeTrackUrl}
-            className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all border-4 border-white ${
-              isBroadcasting
-                ? (isBroadcastPaused() ? 'bg-amber-500' : 'bg-red-500')
-                : status === 'ERROR' ? 'bg-red-500' : 'bg-[#008751]'
-            } text-white`}
+            disabled={status === 'LOADING' && !isBroadcasting}
+            className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all border-4 border-white ${isBroadcasting ? (isBroadcastPaused() ? 'bg-amber-500' : 'bg-red-500') : status === 'ERROR' ? 'bg-red-500' : 'bg-[#008751]'} text-white`}
           >
-            {status === 'LOADING' && !isBroadcasting && !!activeTrackUrl
-              ? <i className="fas fa-circle-notch fa-spin"></i>
+            {status === 'LOADING' && !isBroadcasting
+              ? <i className="fas fa-circle-notch fa-spin" />
               : isBroadcasting
-                ? <i className={`fas ${isBroadcastPaused() ? 'fa-play' : 'fa-pause'} text-lg`}></i>
+                ? <i className={`fas ${isBroadcastPaused() ? 'fa-play' : 'fa-pause'} text-lg`} />
                 : status === 'ERROR'
-                  ? <i className="fas fa-exclamation-triangle"></i>
+                  ? <i className="fas fa-exclamation-triangle" />
                   : isPlaying
-                    ? <i className="fas fa-pause text-lg"></i>
-                    : <i className="fas fa-play text-lg ml-1"></i>}
+                    ? <i className="fas fa-pause text-lg" />
+                    : <i className="fas fa-play text-lg ml-1" />}
           </button>
-
           {isBroadcasting && (
-            <button onClick={handleStop}
-              className="w-10 h-10 rounded-full bg-gray-800 text-white flex items-center justify-center shadow-lg active:scale-95 border-2 border-white">
-              <i className="fas fa-stop text-sm"></i>
+            <button onClick={handleStop} className="w-10 h-10 rounded-full bg-gray-800 text-white flex items-center justify-center shadow-lg active:scale-95 border-2 border-white">
+              <i className="fas fa-stop text-sm" />
             </button>
           )}
         </div>
 
         <div className="w-32 flex items-center space-x-2">
-          <i className="fas fa-volume-down text-green-600 text-[8px]"></i>
-          <input
-            type="range" min="0" max="1" step="0.01" value={volume}
-            onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-            className="flex-grow h-0.5 bg-green-100 rounded-lg appearance-none accent-[#008751]"
-          />
-          <i className="fas fa-volume-up text-green-600 text-[8px]"></i>
+          <i className="fas fa-volume-down text-green-600 text-[8px]" />
+          <input type="range" min="0" max="1" step="0.01" value={volume}
+            onChange={e => handleVolumeChange(parseFloat(e.target.value))}
+            className="flex-grow h-0.5 bg-green-100 rounded-lg appearance-none accent-[#008751]" />
+          <i className="fas fa-volume-up text-green-600 text-[8px]" />
         </div>
       </div>
     </div>
