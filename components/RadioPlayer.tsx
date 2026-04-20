@@ -256,7 +256,6 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
         const isLocal = targetSrc.startsWith('blob:') || targetSrc.startsWith('data:');
         isStreamRef.current = !isLocal;
 
-        // Disable CORS handling for blobs/data to avoid issues
         if (isLocal) {
           audioRef.current.crossOrigin = null;
         } else {
@@ -265,65 +264,33 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
         audioRef.current.src = targetSrc;
         audioRef.current.load();
+        setStatus('LOADING');
 
-        if (isPlaying || forcePlaying) {
-          if (!isStreamRef.current) {
-            initAudioContext();
-          }
-          // Wait for canplay before attempting play
-          const playWhenReady = () => {
-            audioRef.current?.play().catch(err => {
-              console.warn("Playback failed:", err);
+        // Always play when a new track URL is set — this is the primary play trigger
+        if (!isStreamRef.current) initAudioContext();
+        const playWhenReady = () => {
+          audioRef.current?.play().catch(err => {
+            if (err.name === 'NotAllowedError') {
               setStatus('IDLE');
-            });
-            audioRef.current?.removeEventListener('canplay', playWhenReady);
-          };
-          audioRef.current.addEventListener('canplay', playWhenReady, { once: true });
-        }
+              setErrorMessage('Tap ▶ to play');
+              setTimeout(() => setErrorMessage(''), 4000);
+            } else {
+              console.warn('Playback failed:', err);
+              setStatus('IDLE');
+            }
+          });
+        };
+        audioRef.current.addEventListener('canplay', playWhenReady, { once: true });
       }
     }
   }, [activeTrackUrl]);
 
   useEffect(() => {
-    if (audioRef.current) {
-      if (forcePlaying && audioRef.current.paused) {
-        // Don't attempt play if there's no source loaded
-        if (!audioRef.current.src || audioRef.current.src === window.location.href) {
-          setStatus('IDLE');
-          return;
-        }
-        // If still loading (readyState < HAVE_FUTURE_DATA), wait for canplay
-        if (audioRef.current.readyState < 3) {
-          const playWhenReady = () => {
-            if (!isStreamRef.current) initAudioContext();
-            audioRef.current?.play().catch(err => {
-              if (err.name === 'NotAllowedError') {
-                setStatus('IDLE');
-                setErrorMessage('Tap play to start listening');
-                setTimeout(() => setErrorMessage(''), 4000);
-              } else {
-                setStatus('IDLE');
-              }
-            });
-          };
-          audioRef.current.addEventListener('canplay', playWhenReady, { once: true });
-          return;
-        }
-        // Already loaded — play immediately
-        if (!isStreamRef.current) initAudioContext();
-        audioRef.current.play().catch((err) => {
-          if (err.name === 'NotAllowedError') {
-            setStatus('IDLE');
-            setErrorMessage('Tap play to start listening');
-            setTimeout(() => setErrorMessage(''), 4000);
-          } else {
-            setStatus('IDLE');
-          }
-        });
-      } else if (!forcePlaying && !audioRef.current.paused) {
-        audioRef.current.pause();
-      }
+    if (!audioRef.current) return;
+    if (!forcePlaying && !audioRef.current.paused) {
+      audioRef.current.pause();
     }
+    // Play is handled by activeTrackUrl effect — no need to trigger here
   }, [forcePlaying]);
 
   useEffect(() => {
