@@ -167,7 +167,6 @@ const AdminView: React.FC<AdminViewProps> = ({
                 await loadCloudMedia();
                 setStatusMsg(`☁️ ${file.name} synced to cloud`);
                 setTimeout(() => setStatusMsg(''), 3000);
-              }
               } else {
                 console.error(`Cloudinary error for ${file.name}:`, data.error?.message || 'Unknown error');
                 setStatusMsg(`❌ Cloud upload failed for ${file.name}`);
