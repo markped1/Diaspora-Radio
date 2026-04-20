@@ -1,5 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import Logo from './Logo';
+import React, { useState, useRef, useEffect, useCallback } from 'react';import Logo from './Logo';
 import {
   isBroadcastActive,
   isBroadcastPaused,
@@ -11,7 +10,7 @@ import {
 import { webSpeechSpeak } from '../services/webSpeechService';
 import { JINGLE_DJ } from '../constants';
 import { dbService } from '../services/dbService';
-import { hasApi } from '../services/apiService';
+import { hasApi, getLiveState } from '../services/apiService';
 
 interface RadioPlayerProps {
   onStateChange: (isPlaying: boolean) => void;
@@ -349,7 +348,6 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     if (!streamUrl && hasApi()) {
       try {
         setStatus('LOADING');
-        const { getLiveState } = await import('../services/apiService');
         const live = await getLiveState();
         if (live?.track?.url?.startsWith('http')) {
           streamUrl = live.track.url;
