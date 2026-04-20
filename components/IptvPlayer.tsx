@@ -47,7 +47,8 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
     const isHls = url.includes('.m3u8') || url.includes('m3u8');
 
     if (isHls && Hls.isSupported()) {
-      // Firefox, Chrome, Edge — use hls.js
+      // Use hls.js on ALL browsers that support it (Chrome, Firefox, Edge)
+      // This gives consistent behaviour and avoids Chrome's native HLS CORS issues
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
@@ -61,6 +62,8 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         video.muted = muted;
         if (autoPlay) {
+          // Must be muted for autoplay to work on Chrome without user gesture
+          video.muted = true;
           video.play().catch(err => {
             console.warn('HLS autoplay blocked:', err.message);
           });
