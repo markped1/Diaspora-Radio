@@ -347,7 +347,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex-grow">
+      <main className="flex-grow pt-1 px-1.5">
         <RadioPlayer
           onStateChange={setIsRadioPlaying}
           activeTrackUrl={activeTrackUrl}
@@ -359,22 +359,18 @@ const App: React.FC = () => {
         />
 
         {role === UserRole.LISTENER ? (
-          <div className="px-1.5 pt-1">
           <ListenerView
             news={news} onStateChange={setIsRadioPlaying} isRadioPlaying={isRadioPlaying}
             sponsoredVideos={sponsoredMedia} activeTrackUrl={activeTrackUrl}
             currentTrackName={currentTrackName} adminMessages={adminMessages} reports={reports}
             onPlayTrack={(t) => { setHasInteracted(true); setActiveTrackId(t.id); setActiveTrackUrl(t.url); setCurrentTrackName(cleanTrackName(t.name)); setIsRadioPlaying(true); }}
           />
-          </div>
         ) : (
-          <div className="px-1.5 pt-1">
           <AdminView
             onRefreshData={fetchData} logs={logs} onPlayTrack={(t) => { setHasInteracted(true); setActiveTrackId(t.id); setActiveTrackUrl(t.url); setCurrentTrackName(cleanTrackName(t.name)); setIsRadioPlaying(true); }}
             isRadioPlaying={isRadioPlaying} onToggleRadio={() => {
               const stopping = isRadioPlaying;
               setIsRadioPlaying(!isRadioPlaying);
-              // When admin stops — push null to KV so all listeners stop
               if (stopping && hasApi()) setLiveTrack(null).catch(() => {});
             }}
             currentTrackName={currentTrackName} isShuffle={isShuffle} onToggleShuffle={() => setIsShuffle(!isShuffle)}
@@ -383,7 +379,6 @@ const App: React.FC = () => {
             news={news} onTriggerFullBulletin={() => runScheduledBroadcast(false)}
             onRefreshNews={refreshNews}
           />
-          </div>
         )}
       </main>
 
