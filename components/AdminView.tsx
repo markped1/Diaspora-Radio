@@ -158,6 +158,27 @@ const AdminView: React.FC<AdminViewProps> = ({
           timestamp: Date.now(),
           likes: 0
         });
+
+        // If uploaded to cloud, also save to KV so all devices see it
+        if (fileUrl && hasApi()) {
+          try {
+            const cloudItems = await getSharedMedia();
+            cloudItems.unshift({
+              id: 'cloud-' + Date.now(),
+              name: file.name,
+              url: fileUrl,
+              type: finalType,
+              timestamp: Date.now(),
+              likes: 0,
+            });
+            await fetch(`${import.meta.env.VITE_API_URL}/media`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(cloudItems),
+            });
+          } catch {}
+        }
+
         count++;
       }
       setStatusMsg(useCloud
@@ -166,6 +187,7 @@ const AdminView: React.FC<AdminViewProps> = ({
       );
       onRefreshData();
       await loadData();
+      if (useCloud) await loadCloudMedia(); // refresh cloud library display
     } catch (error) { setStatusMsg('Import Error.'); }
     finally { setIsProcessing(false); setTimeout(() => setStatusMsg(''), 6000); if (e.target) e.target.value = ''; }
   };
