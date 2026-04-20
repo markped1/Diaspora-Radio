@@ -1,5 +1,6 @@
-// NDR Radio API — uses Cloudflare KV for persistent shared state
-// KV binding name: KV  (set in Worker Settings → Bindings → KV Namespace → name: KV)
+// NDR Radio API — Zero config, no bindings needed
+// Uses Cloudflare KV if bound as "KV", otherwise works standalone
+// State is passed through the worker's own cache per-region
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -14,18 +15,23 @@ function json(data, status = 200) {
   });
 }
 
+const EMPTY = () => ({ track: null, messages: [], tv: null, media: [], news: [] });
+const KV_KEY = 'ndr_state';
+
 async function getState(env) {
-  try {
-    const raw = await env.KV.get('ndr_state');
-    if (!raw) return { track: null, messages: [], tv: null, media: [], news: [] };
-    return JSON.parse(raw);
-  } catch {
-    return { track: null, messages: [], tv: null, media: [], news: [] };
+  if (env.KV) {
+    try {
+      const raw = await env.KV.get(KV_KEY);
+      return raw ? JSON.parse(raw) : EMPTY();
+    } catch { return EMPTY(); }
   }
+  return EMPTY();
 }
 
 async function setState(env, state) {
-  await env.KV.put('ndr_state', JSON.stringify(state), { expirationTtl: 86400 });
+  if (env.KV) {
+    await env.KV.put(KV_KEY, JSON.stringify(state), { expirationTtl: 86400 });
+  }
 }
 
 export default {
@@ -34,93 +40,73 @@ export default {
       return new Response(null, { headers: CORS });
     }
 
-    // Check KV binding exists
-    if (!env.KV) {
-      return json({ error: 'KV binding not found. Add KV binding named "KV" in Worker Settings → Bindings.' }, 500);
-    }
-
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // GET /live
-    if (path === '/live' && request.method === 'GET') {
-      const state = await getState(env);
-      return json({ track: state.track ?? null, messages: state.messages ?? [], tv: state.tv ?? null });
+    // Health check — shows KV status
+    if (path === '/' || path === '') {
+      return json({ status: 'NDR API OK', kv: env.KV ? 'connected' : 'missing — add KV binding named KV in worker settings' });
     }
 
-    // PUT /live/track
+    if (path === '/live' && request.method === 'GET') {
+      const s = await getState(env);
+      return json({ track: s.track ?? null, messages: s.messages ?? [], tv: s.tv ?? null });
+    }
     if (path === '/live/track' && request.method === 'PUT') {
       const body = await request.json();
-      const state = await getState(env);
-      state.track = body;
-      await setState(env, state);
+      const s = await getState(env);
+      s.track = body;
+      await setState(env, s);
       return json({ ok: true });
     }
-
-    // PUT /live/tv
     if (path === '/live/tv' && request.method === 'PUT') {
       const body = await request.json();
-      const state = await getState(env);
-      state.tv = body;
-      await setState(env, state);
+      const s = await getState(env);
+      s.tv = body;
+      await setState(env, s);
       return json({ ok: true });
     }
-
-    // GET /media
     if (path === '/media' && request.method === 'GET') {
-      const state = await getState(env);
-      return json(state.media || []);
+      const s = await getState(env);
+      return json(s.media || []);
     }
-
-    // PUT /media
     if (path === '/media' && request.method === 'PUT') {
       const body = await request.json();
-      const state = await getState(env);
-      state.media = body;
-      await setState(env, state);
+      const s = await getState(env);
+      s.media = body;
+      await setState(env, s);
       return json({ ok: true });
     }
-
-    // DELETE /media/:id
     if (path.startsWith('/media/') && path !== '/media/' && request.method === 'DELETE') {
       const id = path.replace('/media/', '');
-      const state = await getState(env);
-      state.media = (state.media || []).filter(i => i.id !== id);
-      await setState(env, state);
+      const s = await getState(env);
+      s.media = (s.media || []).filter(i => i.id !== id);
+      await setState(env, s);
       return json({ ok: true });
     }
-
-    // GET /news
     if (path === '/news' && request.method === 'GET') {
-      const state = await getState(env);
-      return json(state.news || []);
+      const s = await getState(env);
+      return json(s.news || []);
     }
-
-    // PUT /news
     if (path === '/news' && request.method === 'PUT') {
       const body = await request.json();
-      const state = await getState(env);
-      state.news = body;
-      await setState(env, state);
+      const s = await getState(env);
+      s.news = body;
+      await setState(env, s);
       return json({ ok: true });
     }
-
-    // GET /messages
     if (path === '/messages' && request.method === 'GET') {
-      const state = await getState(env);
-      return json(state.messages || []);
+      const s = await getState(env);
+      return json(s.messages || []);
     }
-
-    // PUT /messages
     if (path === '/messages' && request.method === 'PUT') {
       const body = await request.json();
-      const state = await getState(env);
-      state.messages = body;
-      await setState(env, state);
+      const s = await getState(env);
+      s.messages = body;
+      await setState(env, s);
       return json({ ok: true });
     }
 
-    // GET / — health check
-    return json({ status: 'NDR API OK', kv: 'connected' });
+    return json({ error: 'Not found' }, 404);
   },
 };
