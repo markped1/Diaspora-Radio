@@ -302,11 +302,39 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     setLoading(true);
     setError('');
 
-    // Final check — ensure src is actually set
-    if (!audio.src || audio.src === window.location.href || audio.src === window.location.origin + '/') {
-      setLoading(false);
-      setError('Stream not loaded yet. Try again in a moment.');
-      setTimeout(() => setError(''), 3000);
+    // If src not loaded yet, fetch and play
+    const currentSrc = audio.src;
+    const srcIsEmpty = !currentSrc || currentSrc === window.location.href || currentSrc === window.location.origin + '/';
+
+    if (srcIsEmpty) {
+      // Fetch URL from Supabase then play
+      if (hasApi()) {
+        getLiveState().then(live => {
+          const trackUrl = live?.track?.url;
+          if (trackUrl?.startsWith('http') && audioEl.current) {
+            audioEl.current.removeAttribute('crossorigin');
+            audioEl.current.src = trackUrl;
+            loadedUrl.current = trackUrl;
+            audioEl.current.play().catch((err: any) => {
+              setLoading(false);
+              setError(err.name === 'NotAllowedError' ? 'Tap ▶ again to play' : 'Playback failed');
+              setTimeout(() => setError(''), 4000);
+            });
+          } else {
+            setLoading(false);
+            setError('No stream. Admin needs to start playing.');
+            setTimeout(() => setError(''), 4000);
+          }
+        }).catch(() => {
+          setLoading(false);
+          setError('Connection error. Try again.');
+          setTimeout(() => setError(''), 4000);
+        });
+      } else {
+        setLoading(false);
+        setError('No stream available.');
+        setTimeout(() => setError(''), 3000);
+      }
       return;
     }
 
