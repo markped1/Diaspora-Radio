@@ -199,7 +199,19 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     }
   }, [volume, isDucking, musicVolumeOverride]);
 
-  const handlePlayPause = async () => {
+  // Pre-fetch cloud URL so it's ready when user taps play
+  const cloudUrlRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (hasApi()) {
+      getLiveState().then(live => {
+        if (live?.track?.url?.startsWith('http')) {
+          cloudUrlRef.current = live.track.url;
+        }
+      }).catch(() => {});
+    }
+  }, [activeTrackUrl]); // re-fetch when activeTrackUrl changes
+
+  const handlePlayPause = () => {
     if (isBroadcasting) {
       isBroadcastPaused() ? resumeBroadcast() : pauseBroadcast();
       return;
@@ -212,18 +224,8 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       return;
     }
 
-    // Find stream URL — check local first, then cloud
-    let streamUrl = activeTrackUrl || dbService.getLiveStreamUrl() || null;
-
-    if (!streamUrl && hasApi()) {
-      try {
-        setStatus('LOADING');
-        const live = await getLiveState();
-        if (live?.track?.url?.startsWith('http')) streamUrl = live.track.url;
-      } catch (e) {
-        console.error('RadioPlayer sync failed:', e);
-      }
-    }
+    // Get URL synchronously — no await, no async gap
+    const streamUrl = activeTrackUrl || dbService.getLiveStreamUrl() || cloudUrlRef.current || null;
 
     if (!streamUrl) {
       setStatus('IDLE');
