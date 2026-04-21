@@ -100,7 +100,8 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     const onMeta    = () => { if (isFinite(audio.duration)) setDuration(audio.duration); };
     const onError   = () => {
       const src = audio.src;
-      if (!src || src === window.location.href) return; // ignore empty src errors
+      // Ignore errors when src is empty or is the page URL (happens during cleanup/load)
+      if (!src || src === '' || src === window.location.href || src === window.location.origin + '/') return;
       const code = (audio.error as any)?.code;
       let msg = 'Playback error';
       if (code === 2) msg = 'Network error — check connection';
@@ -159,6 +160,9 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     }
 
     // Pre-load: set src and buffer — this does NOT require a user gesture
+    if (!activeTrackUrl || !activeTrackUrl.startsWith('http') && !activeTrackUrl.startsWith('blob:')) {
+      return; // invalid URL — don't load
+    }
     audio.src = activeTrackUrl;
     audio.load();
     loadedUrl.current = activeTrackUrl;
@@ -297,6 +301,15 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     // ── Step 4: PLAY — synchronous, inside user gesture ───────────────────
     setLoading(true);
     setError('');
+
+    // Final check — ensure src is actually set
+    if (!audio.src || audio.src === window.location.href || audio.src === window.location.origin + '/') {
+      setLoading(false);
+      setError('Stream not loaded yet. Try again in a moment.');
+      setTimeout(() => setError(''), 3000);
+      return;
+    }
+
     audio.play().catch((err: any) => {
       setLoading(false);
       if (err.name === 'NotAllowedError') {
