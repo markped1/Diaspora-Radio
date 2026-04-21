@@ -240,23 +240,22 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       if (isStreamRef.current) audio.removeAttribute('crossorigin');
       else audio.crossOrigin = null;
       audio.src = streamUrl;
-      audio.load();
       loadingUrlRef.current = streamUrl;
+      // Don't call audio.load() — setting src is enough and keeps the play() call synchronous
     }
 
-    // Wait for canplay then play
-    const doPlay = () => {
-      audio.play().catch((err: any) => {
+    // Call play() directly — this is inside a user gesture handler so mobile allows it
+    audio.play().catch((err: any) => {
+      if (err.name === 'NotAllowedError') {
+        setStatus('IDLE');
+        setErrorMessage('Tap ▶ to play');
+        setTimeout(() => setErrorMessage(''), 4000);
+      } else {
         setStatus('ERROR');
-        setErrorMessage(err.name === 'NotAllowedError' ? 'Tap ▶ to play' : (err.message || 'Failed to play'));
-        loadingUrlRef.current = null;
-      });
-    };
-    if (audio.readyState >= 3) {
-      doPlay();
-    } else {
-      audio.addEventListener('canplay', doPlay, { once: true });
-    }
+        setErrorMessage(err.message || 'Failed to play');
+      }
+      loadingUrlRef.current = null;
+    });
   };
 
   const handleStop = () => {
