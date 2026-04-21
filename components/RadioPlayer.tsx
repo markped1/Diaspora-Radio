@@ -154,21 +154,27 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
     if (!isStreamRef.current) initAudioContext();
 
-    // Play as soon as enough data is available
-    audio.addEventListener('canplay', function onReady() {
-      audio.removeEventListener('canplay', onReady);
-      if (loadingUrlRef.current !== activeTrackUrl) return; // URL changed, abort
-      audio.play().catch(err => {
-        if (err.name === 'NotAllowedError') {
-          setStatus('IDLE');
-          setErrorMessage('Tap ▶ to play');
-          setTimeout(() => setErrorMessage(''), 4000);
-        } else {
-          setStatus('IDLE');
-        }
-        loadingUrlRef.current = null;
+    // Only auto-play if forcePlaying is true (admin triggered)
+    // Otherwise just load — user will tap play themselves
+    if (forcePlaying) {
+      audio.addEventListener('canplay', function onReady() {
+        audio.removeEventListener('canplay', onReady);
+        if (loadingUrlRef.current !== activeTrackUrl) return;
+        audio.play().catch(err => {
+          if (err.name === 'NotAllowedError') {
+            setStatus('IDLE');
+            setErrorMessage('Tap ▶ to play');
+            setTimeout(() => setErrorMessage(''), 4000);
+          } else {
+            setStatus('IDLE');
+          }
+          loadingUrlRef.current = null;
+        });
       });
-    });
+    } else {
+      // Just preload — user taps play when ready
+      setStatus('IDLE');
+    }
   }, [activeTrackUrl]);
 
   // Handle pause when forcePlaying goes false
@@ -288,12 +294,11 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
           <span className={`text-[7px] font-black uppercase tracking-widest line-clamp-1 ${isBroadcasting ? 'text-red-700' : 'text-green-800'}`}>
             {isBroadcasting
               ? (isBroadcastPaused() ? '⏸ BROADCAST PAUSED' : '🔴 LIVE BROADCAST — TAP TO PAUSE')
-              : (activeTrackUrl ? (
-                  <span className="flex items-center justify-center">
-                    {activeTrackUrl.startsWith('http') && <span className="w-1 h-1 bg-red-500 rounded-full mr-1.5 animate-pulse shrink-0"></span>}
-                    {activeTrackUrl.startsWith('http') ? 'LIVE ON AIR: ' : 'NOW PLAYING: '}{currentTrackName}
-                  </span>
-                ) : '📻 TAP ▶ TO LISTEN LIVE')}
+              : isPlaying
+                ? `🔴 NOW PLAYING: ${currentTrackName}`
+                : activeTrackUrl
+                  ? `📻 TAP ▶ — ${currentTrackName || 'LIVE STREAM READY'}`
+                  : '📻 TAP ▶ TO LISTEN LIVE'}
           </span>
         </div>
 

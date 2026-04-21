@@ -108,11 +108,13 @@ const App: React.FC = () => {
           // Sync cloud track to LISTENERS only — Admin is the source of truth
           if (roleRef.current === UserRole.LISTENER) {
             if (live.track?.url?.startsWith('http')) {
+              // Only update URL — never force-start playback
+              // Listener decides when to tap play
               setActiveTrackUrl(live.track.url);
               setCurrentTrackName(live.track.name || '');
-              // Always set playing for listeners — they need to tap play due to browser policy
-              setIsRadioPlaying(true);
+              // Don't call setIsRadioPlaying(true) — that's the listener's choice
             } else if (live.track === null) {
+              // Admin stopped — stop listener too
               setActiveTrackUrl(null);
               setCurrentTrackName('');
               setIsRadioPlaying(false);
