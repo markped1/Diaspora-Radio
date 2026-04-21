@@ -184,7 +184,7 @@ window.addEventListener('touchstart', unlockAudio, { once: true });
     };
   }, []);
 
-  // Load when URL changes
+  // Load when URL changes — pre-load src so it's ready when user taps
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -208,10 +208,10 @@ window.addEventListener('touchstart', unlockAudio, { once: true });
     currentUrlRef.current = activeTrackUrl;
     loadingUrlRef.current = activeTrackUrl;
     configureCors(audio, activeTrackUrl);
+    // Pre-load the src so audio.play() works synchronously on mobile tap
     audio.src = activeTrackUrl;
-    setStatus('LOADING');
-    // Don't auto-play — listener taps play
-    setStatus('IDLE');
+    audio.load(); // buffer the audio so it's ready
+    setStatus('IDLE'); // ready to play on tap
   }, [activeTrackUrl]);
 
   // Pause when forcePlaying goes false
@@ -307,6 +307,7 @@ window.addEventListener('touchstart', unlockAudio, { once: true });
       loadingUrlRef.current = streamUrl;
       configureCors(audio, streamUrl);
       audio.src = streamUrl;
+      audio.load();
     }
 
     // Init audio context for visualizer (local files only)
