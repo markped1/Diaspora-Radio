@@ -270,9 +270,31 @@ window.addEventListener('touchstart', unlockAudio, { once: true });
     const streamUrl = activeTrackUrl || dbService.getLiveStreamUrl() || cloudUrlRef.current || null;
 
     if (!streamUrl) {
-      setStatus('IDLE');
-      setErrorMessage('No stream available. Admin needs to start playing.');
-      setTimeout(() => setErrorMessage(''), 3000);
+      // No URL yet — fetch from Supabase and show loading
+      setStatus('LOADING');
+      setErrorMessage('');
+      getLiveState().then(live => {
+        const url = live?.track?.url;
+        if (url?.startsWith('http')) {
+          cloudUrlRef.current = url;
+          currentUrlRef.current = url;
+          loadingUrlRef.current = url;
+          configureCors(audio, url);
+          audio.src = url;
+          audio.play().catch((err: any) => {
+            setStatus('IDLE');
+            setErrorMessage(err.name === 'NotAllowedError' ? 'Tap ▶ to play' : 'Failed to play');
+          });
+        } else {
+          setStatus('IDLE');
+          setErrorMessage('No stream available. Admin needs to start playing.');
+          setTimeout(() => setErrorMessage(''), 3000);
+        }
+      }).catch(() => {
+        setStatus('IDLE');
+        setErrorMessage('Connection error. Check your internet.');
+        setTimeout(() => setErrorMessage(''), 3000);
+      });
       return;
     }
 
