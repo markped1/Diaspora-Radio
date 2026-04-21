@@ -59,42 +59,94 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   const gainNodeRef = useRef<GainNode | null>(null);
   const isStreamRef = useRef<boolean>(false);
   const loadingUrlRef = useRef<string | null>(null); // track which URL is currently loading
+  const currentUrlRef = useRef<string | null>(null); // reliable URL tracking (audio.src is normalized by browsers)
   const onTrackEndedRef = useRef(onTrackEnded);
   useEffect(() => { onTrackEndedRef.current = onTrackEnded; }, [onTrackEnded]);
 
-  const initAudioContext = () => {
-    try {
-      if (!audioRef.current || isStreamRef.current) return;
-      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') ctx.resume().catch(console.warn);
-      if (!gainNodeRef.current) {
-        const gain = ctx.createGain();
-        gain.connect(ctx.destination);
-        gainNodeRef.current = gain;
-      }
-      if (!sourceRef.current) {
-        try {
-          sourceRef.current = ctx.createMediaElementSource(audioRef.current);
-          const newAnalyser = ctx.createAnalyser();
-          newAnalyser.fftSize = 256;
-          sourceRef.current.connect(newAnalyser);
-          newAnalyser.connect(gainNodeRef.current!);
-          setAnalyser(newAnalyser);
-        } catch (err) {
+  // Connect the audio element to Web Audio API graph (for visualizer)
+  // IMPORTANT: createMediaElementSource() redirects ALL audio through Web Audio.
+  // If AudioContext is suspended, this causes SILENCE. So we ONLY connect
+  // after confirming the context is running.
+  const connectWebAudioGraph = () => {
+    const ctx = audioContextRef.current;
+    const audio = audioRef.current;
+    if (!ctx || !audio || ctx.state !== 'running') return;
+    
+    if (!gainNodeRef.current) {
+      const gain = ctx.createGain();
+      gain.connect(ctx.destination);
+      gainNodeRef.current = gain;
+    }
+    if (!sourceRef.current) {
+      try {
+        sourceRef.current = ctx.createMediaElementSource(audio);
+        const newAnalyser = ctx.createAnalyser();
+        newAnalyser.fftSize = 256;
+        sourceRef.current.connect(newAnalyser);
+        newAnalyser.connect(gainNodeRef.current!);
+        setAnalyser(newAnalyser);
+        console.log('🔊 Web Audio graph connected (visualizer active)');
+      } catch (err: any) {
+        if (!err?.message?.includes('already been created')) {
           console.warn('AudioContext source error:', err);
         }
+      }
+    }
+  };
+
+  const initAudioContext = () => {
+    try {
+      if (!audioRef.current) return;
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioCtx) return;
+        audioContextRef.current = new AudioCtx();
+      }
+      const ctx = audioContextRef.current;
+
+      if (ctx.state === 'running') {
+        // Context is active — safe to connect the audio graph
+        connectWebAudioGraph();
+      } else if (ctx.state === 'suspended') {
+        // Try to resume; only connect graph AFTER it actually starts running
+        // This prevents Edge from swallowing audio into a suspended graph
+        ctx.resume().then(() => {
+          if (ctx.state === 'running') {
+            connectWebAudioGraph();
+          }
+        }).catch(() => {
+          console.warn('AudioContext resume deferred — audio plays through default output');
+        });
       }
     } catch (e) {
       console.error('Audio init error:', e);
     }
   };
 
+  // Helper: configure crossOrigin based on URL type
+  const configureCrossOrigin = (audio: HTMLAudioElement, url: string) => {
+    const isLocal = url.startsWith('blob:') || url.startsWith('data:');
+    const isCloudinary = url.includes('cloudinary.com') || url.includes('res.cloudinary');
+    const isSupabase = url.includes('supabase');
+    const isCorsReady = isCloudinary || isSupabase;
+
+    if (isLocal) {
+      // Local blobs don't need CORS
+      audio.removeAttribute('crossorigin');
+    } else if (isCorsReady) {
+      // Cloud CDNs that send proper CORS headers
+      audio.crossOrigin = 'anonymous';
+    } else {
+      // Unknown remote URLs (streams etc.) — don't set crossOrigin
+      // Setting it on servers that don't support CORS will block playback
+      audio.removeAttribute('crossorigin');
+    }
+  };
+
   // Create audio element once on mount
   useEffect(() => {
     const audio = new Audio();
+    audio.preload = 'auto'; // hint browsers to buffer ahead
     audioRef.current = audio;
     audio.addEventListener('play', () => { setStatus('PLAYING'); setIsPlaying(true); onStateChange(true); setErrorMessage(''); });
     audio.addEventListener('pause', () => { setStatus('IDLE'); setIsPlaying(false); onStateChange(false); });
@@ -105,19 +157,62 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     audio.addEventListener('loadedmetadata', () => setDuration(audio.duration));
     audio.addEventListener('error', (e) => {
       const target = e.target as HTMLAudioElement;
+      // Ignore errors when src is empty (happens during cleanup)
+      if (!target.src || target.src === '' || target.src === window.location.href) return;
       let msg = 'Playback error';
-      if (target.error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) msg = 'Stream URL not accessible';
-      else if (target.error?.code === MediaError.MEDIA_ERR_NETWORK) msg = 'Network error';
+      if (target.error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) msg = 'Format not supported — trying different source';
+      else if (target.error?.code === MediaError.MEDIA_ERR_NETWORK) msg = 'Network error — retrying...';
+      else if (target.error?.code === MediaError.MEDIA_ERR_DECODE) msg = 'Decode error — audio format issue';
+      console.warn(`Audio error [${target.error?.code}]: ${msg}`, target.src?.substring(0, 80));
       setErrorMessage(msg);
       setStatus('ERROR');
       setIsPlaying(false);
       onStateChange(false);
       loadingUrlRef.current = null;
+
+      // Auto-retry once after a short delay (handles transient network blips)
+      if (target.error?.code === MediaError.MEDIA_ERR_NETWORK && currentUrlRef.current) {
+        setTimeout(() => {
+          if (audioRef.current && currentUrlRef.current) {
+            console.log('🔄 Auto-retrying audio load...');
+            audioRef.current.load();
+            audioRef.current.play().catch(() => {});
+          }
+        }, 2000);
+      }
     });
+
+    // 🚀 Global Audio Unlocking Strategy for iOS & Android Webview
+    // We attach an interaction listener to unlock the audio element on the very first tap
+    // This allows seamless background track switching by Admin without hitting Autoplay blocks
+    const unlockAudio = () => {
+      if (audioContextRef.current?.state === 'suspended') {
+        audioContextRef.current.resume().catch(() => {});
+      }
+      
+      if (!audio.src || audio.src === window.location.href) {
+        // Load an initial tiny silent MP3 blob just to unlock the playback API natively
+        audio.src = 'data:audio/mp3;base64,//OExAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq';
+        audio.play().then(() => {
+          audio.pause(); 
+          audio.removeAttribute('src'); 
+          audio.load();
+          console.log('🔓 Audio pipeline globally unlocked');
+        }).catch(() => {});
+      }
+      
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+
+    window.addEventListener('click', unlockAudio, { once: true });
+    window.addEventListener('touchstart', unlockAudio, { once: true });
     return () => {
       audio.pause();
-      audio.src = '';
+      audio.removeAttribute('src');
+      audio.load(); // release resources properly
       audioRef.current = null;
+      currentUrlRef.current = null;
     };
   }, []);
 
@@ -128,9 +223,10 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
     if (!activeTrackUrl) {
       loadingUrlRef.current = null;
+      currentUrlRef.current = null;
       audio.pause();
       audio.removeAttribute('src');
-      audio.load();
+      audio.load(); // release resources
       setStatus('IDLE');
       setIsPlaying(false);
       onStateChange(false);
@@ -138,34 +234,47 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       return;
     }
 
-    // Skip if same URL already loaded/loading
-    if (audio.src === activeTrackUrl || loadingUrlRef.current === activeTrackUrl) return;
+    // Skip if same URL already loaded/loading — use our ref, not audio.src
+    // (browsers normalize audio.src which breaks string comparison for blob: URLs)
+    if (currentUrlRef.current === activeTrackUrl || loadingUrlRef.current === activeTrackUrl) return;
 
     const isLocal = activeTrackUrl.startsWith('blob:') || activeTrackUrl.startsWith('data:');
     isStreamRef.current = !isLocal;
     loadingUrlRef.current = activeTrackUrl;
+    currentUrlRef.current = activeTrackUrl;
 
-    if (isLocal) audio.crossOrigin = null;
-    else audio.removeAttribute('crossorigin');
+    // Configure CORS based on URL type
+    configureCrossOrigin(audio, activeTrackUrl);
 
     audio.src = activeTrackUrl;
-    audio.load();
+    audio.load(); // required by Safari and Firefox to start buffering
     setStatus('LOADING');
 
-    if (!isStreamRef.current) initAudioContext();
+    // Initialize AudioContext for visualizer (works for both streams and local files)
+    initAudioContext();
 
     // Only auto-play if forcePlaying is true (admin triggered)
     // Otherwise just load — user will tap play themselves
     if (forcePlaying) {
-      audio.addEventListener('canplay', function onReady() {
-        audio.removeEventListener('canplay', onReady);
+      // Use canplaythrough for better reliability — means enough data is buffered
+      const readyEvent = isStreamRef.current ? 'canplay' : 'canplaythrough';
+      audio.addEventListener(readyEvent, function onReady() {
+        audio.removeEventListener(readyEvent, onReady);
         if (loadingUrlRef.current !== activeTrackUrl) return;
+        // Resume AudioContext if suspended (Safari requires this during user gesture chain)
+        if (audioContextRef.current?.state === 'suspended') {
+          audioContextRef.current.resume().catch(() => {});
+        }
         audio.play().catch(err => {
           if (err.name === 'NotAllowedError') {
             setStatus('IDLE');
             setErrorMessage('Tap ▶ to play');
             setTimeout(() => setErrorMessage(''), 4000);
+          } else if (err.name === 'AbortError') {
+            // Another load interrupted this one — safe to ignore
+            setStatus('IDLE');
           } else {
+            console.warn('Auto-play failed:', err.message);
             setStatus('IDLE');
           }
           loadingUrlRef.current = null;
@@ -193,9 +302,16 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   // Volume control
   useEffect(() => {
     let gain = musicVolumeOverride !== null ? musicVolumeOverride : isDucking ? volume * 0.15 : volume;
+    // Always set volume on the audio element directly (works without Web Audio)
     if (audioRef.current) audioRef.current.volume = gain;
-    if (gainNodeRef.current && audioContextRef.current?.state !== 'closed') {
-      gainNodeRef.current.gain.setTargetAtTime(gain, audioContextRef.current!.currentTime, 0.1);
+    // Also update Web Audio gain node if graph is connected and running
+    if (gainNodeRef.current && audioContextRef.current?.state === 'running') {
+      try {
+        gainNodeRef.current.gain.setTargetAtTime(gain, audioContextRef.current.currentTime, 0.1);
+      } catch {
+        // Edge sometimes throws if context transitions during this call
+        gainNodeRef.current.gain.value = gain;
+      }
     }
   }, [volume, isDucking, musicVolumeOverride]);
 
@@ -224,6 +340,11 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       return;
     }
 
+    // Resume AudioContext on user gesture — required by Safari/Chrome/Edge autoplay policy
+    if (audioContextRef.current?.state === 'suspended') {
+      audioContextRef.current.resume().catch(() => {});
+    }
+
     // Get URL synchronously — no await, no async gap
     const streamUrl = activeTrackUrl || dbService.getLiveStreamUrl() || cloudUrlRef.current || null;
 
@@ -237,27 +358,60 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     setStatus('LOADING');
     setErrorMessage('');
 
-    if (audio.src !== streamUrl) {
-      isStreamRef.current = !streamUrl.startsWith('blob:');
-      if (isStreamRef.current) audio.removeAttribute('crossorigin');
-      else audio.crossOrigin = null;
-      audio.src = streamUrl;
-      loadingUrlRef.current = streamUrl;
-      // Don't call audio.load() — setting src is enough and keeps the play() call synchronous
-    }
+    // Helper: attempt play with proper error handling for all browsers
+    const attemptPlay = () => {
+      audio.play().catch((err: any) => {
+        if (err.name === 'NotAllowedError') {
+          setStatus('IDLE');
+          setErrorMessage('Tap ▶ to play');
+          setTimeout(() => setErrorMessage(''), 4000);
+        } else if (err.name === 'AbortError') {
+          // load() interrupted play — wait for media to be ready, then retry
+          const retryOnReady = () => {
+            audio.play().catch(() => { setStatus('IDLE'); });
+          };
+          // Try canplay first, with a timeout fallback for Edge
+          const timeout = setTimeout(() => {
+            audio.removeEventListener('canplay', onCanPlay);
+            retryOnReady();
+          }, 3000);
+          const onCanPlay = () => {
+            clearTimeout(timeout);
+            retryOnReady();
+          };
+          audio.addEventListener('canplay', onCanPlay, { once: true });
+        } else {
+          setStatus('ERROR');
+          setErrorMessage(err.message || 'Failed to play');
+          console.warn('Play failed:', err.name, err.message);
+        }
+        loadingUrlRef.current = null;
+      });
+    };
 
-    // Call play() directly — this is inside a user gesture handler so mobile allows it
-    audio.play().catch((err: any) => {
-      if (err.name === 'NotAllowedError') {
-        setStatus('IDLE');
-        setErrorMessage('Tap ▶ to play');
-        setTimeout(() => setErrorMessage(''), 4000);
-      } else {
-        setStatus('ERROR');
-        setErrorMessage(err.message || 'Failed to play');
-      }
-      loadingUrlRef.current = null;
-    });
+    // Use our ref for comparison instead of audio.src (which browsers normalize)
+    if (currentUrlRef.current !== streamUrl) {
+      // New URL — need to load first
+      const isLocal = streamUrl.startsWith('blob:') || streamUrl.startsWith('data:');
+      isStreamRef.current = !isLocal;
+      configureCrossOrigin(audio, streamUrl);
+      audio.src = streamUrl;
+      currentUrlRef.current = streamUrl;
+      loadingUrlRef.current = streamUrl;
+      initAudioContext();
+
+      // Call attemptPlay() synchronously inside the user gesture.
+      // Browsers like Safari and Chrome on Android REQUIRE the play() promise to be
+      // initiated synchronously from within the click handler to unlock the audio element.
+      // If we defer attemptPlay() using loadstart/setTimeout, they throw NotAllowedError.
+      // If load() aborts the play() on Edge, attemptPlay() will catch the AbortError
+      // and safely retry once the 'canplay' event fires.
+      audio.load();
+      attemptPlay();
+    } else {
+      // Same URL already loaded — play directly (fast path)
+      attemptPlay();
+    }
   };
 
   const handleStop = () => {
