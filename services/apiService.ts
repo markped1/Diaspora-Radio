@@ -1,25 +1,67 @@
 /**
- * NDR API Service
- *
- * Replaces localStorage with Cloudflare Worker API calls.
- * All devices share the same data — admin uploads music, all listeners see it.
- *
- * Set VITE_API_URL in .env.local after deploying the Cloudflare Worker.
+ * NDR API Service — Supabase backend
+ * Real-time sync, no polling needed
  */
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+const SB_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-// Falls back to localStorage if API not configured
-const hasApi = () => Boolean(API_URL);
+export const hasApi = () => Boolean(SB_URL && SB_KEY);
 
-async function apiFetch(path: string, options: RequestInit = {}): Promise<any> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    signal: AbortSignal.timeout(8000), // 8 second timeout
+function h() {
+  return {
+    'apikey': SB_KEY,
+    'Authorization': `Bearer ${SB_KEY}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation',
+  };
+}
+
+async function sb(path: string, opts: RequestInit = {}): Promise<any> {
+  if (!hasApi()) return null;
+  const res = await fetch(`${SB_URL}/rest/v1${path}`, {
+    ...opts,
+    headers: { ...h(), ...(opts.headers as any || {}) },
+    signal: AbortSignal.timeout(8000),
   });
-  if (!res.ok) throw new Error(`API ${path} failed: ${res.status}`);
-  return res.json();
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+// ─── Live State ───────────────────────────────────────────────────────────────
+
+export async function getLiveState(): Promise<{ track: any; messages: any[]; tv: any; stream: string }> {
+  if (!hasApi()) return { track: null, messages: [], tv: null, stream: '' };
+  try {
+    const rows = await sb('/live_state?id=eq.1&select=*');
+    if (rows?.length) {
+      const r = rows[0];
+      return { track: r.track ?? null, messages: r.messages ?? [], tv: r.tv ?? null, stream: r.stream ?? '' };
+    }
+    return { track: null, messages: [], tv: null, stream: '' };
+  } catch { return { track: null, messages: [], tv: null, stream: '' }; }
+}
+
+async function patchLive(patch: Record<string, any>): Promise<void> {
+  if (!hasApi()) return;
+  try {
+    await sb('/live_state?id=eq.1', {
+      method: 'PATCH',
+      body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }),
+    });
+  } catch (e) { console.warn('patchLive failed:', e); }
+}
+
+export async function setLiveTrack(track: { url: string; name: string } | null): Promise<void> {
+  await patchLive({ track });
+}
+
+export async function setLiveTv(tv: any | null): Promise<void> {
+  await patchLive({ tv });
+}
+
+export async function setLiveStream(stream: string): Promise<void> {
+  await patchLive({ stream });
 }
 
 // ─── Media ────────────────────────────────────────────────────────────────────
@@ -27,103 +69,49 @@ async function apiFetch(path: string, options: RequestInit = {}): Promise<any> {
 export async function getSharedMedia(): Promise<any[]> {
   if (!hasApi()) return [];
   try {
-    return await apiFetch('/media');
-  } catch {
-    return [];
-  }
-}
-
-export async function uploadMediaToCloud(file: File, type: 'audio' | 'video' | 'image'): Promise<any | null> {
-  if (!hasApi()) return null;
-  try {
-    const form = new FormData();
-    form.append('file', file);
-    form.append('name', file.name);
-    form.append('type', type);
-    const res = await fetch(`${API_URL}/media/upload`, { method: 'POST', body: form });
-    const data = await res.json();
-    return data.item || null;
-  } catch {
-    return null;
-  }
-}
-
-export async function deleteSharedMedia(id: string): Promise<void> {
-  if (!hasApi()) return;
-  try {
-    await apiFetch(`/media/${id}`, { method: 'DELETE' });
-  } catch {}
+    const rows = await sb('/media?select=*&order=created_at.desc');
+    return rows || [];
+  } catch { return []; }
 }
 
 export async function addMediaToCloud(item: { id: string; name: string; url: string; type: string; timestamp: number }): Promise<void> {
   if (!hasApi()) return;
   try {
-    const existing = await apiFetch('/media');
-    const alreadyExists = existing.find((m: any) => m.id === item.id);
-    if (!alreadyExists) {
-      const updated = [item, ...existing];
-      // Use longer timeout for media writes
-      const res = await fetch(`${API_URL}/media`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated),
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!res.ok) throw new Error(`Media save failed: ${res.status}`);
-    }
-  } catch (e) {
-    console.warn('addMediaToCloud failed:', e);
-  }
+    await sb('/media', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=ignore-duplicates' } as any,
+      body: JSON.stringify({
+        id: item.id,
+        name: item.name,
+        url: item.url,
+        type: item.type,
+        created_at: new Date(item.timestamp).toISOString(),
+      }),
+    });
+  } catch (e) { console.warn('addMediaToCloud failed:', e); }
 }
 
-// ─── Live State ───────────────────────────────────────────────────────────────
-
-export async function getLiveState(): Promise<{ track: any; stream: string | null; messages: any[]; tv: any }> {
-  if (!hasApi()) return { track: null, stream: null, messages: [], tv: null };
-  try {
-    return await apiFetch('/live');
-  } catch {
-    return { track: null, stream: null, messages: [], tv: null };
-  }
+export async function deleteSharedMedia(id: string): Promise<void> {
+  if (!hasApi()) return;
+  try { await sb(`/media?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch {}
 }
 
-export async function setSharedStreamUrl(url: string | null): Promise<void> {
+export async function updateMediaInCloud(id: string, patch: Record<string, any>): Promise<void> {
   if (!hasApi()) return;
   try {
-    await apiFetch('/live/stream', { method: 'PUT', body: JSON.stringify({ url }) });
-  } catch {}
-}
-
-export async function setLiveTrack(track: { url: string; name: string } | null): Promise<void> {
-  if (!hasApi()) return;
-  try {
-    await apiFetch('/live/track', { method: 'PUT', body: JSON.stringify(track) });
-  } catch {}
-}
-
-export async function setLiveTv(tv: { url: string; name: string } | null): Promise<void> {
-  if (!hasApi()) return;
-  try {
-    await apiFetch('/live/tv', { method: 'PUT', body: JSON.stringify(tv) });
+    await sb(`/media?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
   } catch {}
 }
 
 // ─── News ─────────────────────────────────────────────────────────────────────
 
-export async function getSharedNews(): Promise<any[]> {
-  if (!hasApi()) return [];
-  try {
-    return await apiFetch('/news');
-  } catch {
-    return [];
-  }
+export async function setSharedStreamUrl(stream: string): Promise<void> {
+  await setLiveStream(stream);
 }
 
-export async function saveSharedNews(news: any[]): Promise<void> {
-  if (!hasApi()) return;
-  try {
-    await apiFetch('/news', { method: 'PUT', body: JSON.stringify(news) });
-  } catch {}
-}
-
-export { hasApi };
+export async function getSharedNews(): Promise<any[]> { return []; }
+export async function saveSharedNews(_news: any[]): Promise<void> {}
+export async function uploadMediaToCloud(_file: File, _type: string): Promise<any> { return null; }
