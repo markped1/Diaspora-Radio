@@ -1,14 +1,3 @@
-/**
- * RadioPlayer — Production-ready audio player
- * Works on: Chrome, Firefox, Edge, Safari, Android WebView (Capacitor APK), iOS
- *
- * Key mobile fixes:
- * 1. Silent MP3 unlock on first tap — unlocks audio pipeline on all browsers
- * 2. AudioContext only connects when state === 'running' — prevents silent audio
- * 3. No async gap before audio.play() — satisfies mobile autoplay policy
- * 4. currentUrlRef tracks actual URL — avoids browser URL normalization issues
- * 5. Auto-retry on network errors — handles mobile network instability
- */
 import React, { useState, useRef, useEffect } from 'react';
 import Logo from './Logo';
 import {
@@ -21,9 +10,6 @@ import {
 } from '../services/aiDjService';
 import { dbService } from '../services/dbService';
 import { hasApi, getLiveState } from '../services/apiService';
-
-// Tiny silent MP3 — used to unlock audio pipeline on first user gesture
-const SILENT_MP3 = 'data:audio/mp3;base64,//OExAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq';
 
 interface RadioPlayerProps {
   onStateChange: (isPlaying: boolean) => void;
@@ -169,22 +155,25 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       onStateChange(false);
     });
 
-    // Global audio unlock on first user gesture — required for mobile browsers
-    const unlockAudio = () => {
-      const a = audioRef.current;
-      if (a) {
-        a.src = SILENT_MP3;
-        a.play().then(() => {
-          a.pause();
-          a.removeAttribute('src');
-          a.load();
-        }).catch(() => {});
-      }
-      window.removeEventListener('click', unlockAudio);
-      window.removeEventListener('touchstart', unlockAudio);
-    };
-    window.addEventListener('click', unlockAudio, { once: true });
-    window.addEventListener('touchstart', unlockAudio, { once: true });
+// Unlock audio pipeline on first user gesture using AudioContext (more reliable than blob)
+const unlockAudio = () => {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioCtx) {
+      const ctx = new AudioCtx();
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+      setTimeout(() => ctx.close(), 100);
+    }
+  } catch {}
+  window.removeEventListener('click', unlockAudio);
+  window.removeEventListener('touchstart', unlockAudio);
+};
+window.addEventListener('click', unlockAudio, { once: true });
+window.addEventListener('touchstart', unlockAudio, { once: true });
 
     return () => {
       audio.pause();
@@ -192,8 +181,6 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       audio.load();
       audioRef.current = null;
       currentUrlRef.current = null;
-      window.removeEventListener('click', unlockAudio);
-      window.removeEventListener('touchstart', unlockAudio);
     };
   }, []);
 
