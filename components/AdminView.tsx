@@ -4,7 +4,7 @@ import { dbService } from '../services/dbService';
 import { AdminLog, MediaFile, NewsItem, ListenerReport, SportChannel } from '../types';
 import TvMonitor from './TvMonitor';
 import SportsTv from './SportsTv';
-import { getSharedMedia, hasApi, addMediaToCloud, setSharedStreamUrl } from '../services/apiService';
+import { getSharedMedia, hasApi, addMediaToCloud, setSharedStreamUrl, deleteSharedMedia } from '../services/apiService';
 import { DEFAULT_STREAM_URL } from '../constants';
 
 interface AdminViewProps {
@@ -579,12 +579,9 @@ const AdminView: React.FC<AdminViewProps> = ({
                         <span className="text-[7px] font-black uppercase text-gray-500">{allTracks.length} tracks</span>
                         <button onClick={async () => {
                           if (!confirm('Delete ALL audio tracks? This cannot be undone.')) return;
-                          // Delete all local
                           for (const t of localAudio) await dbService.deleteMedia(t.id);
-                          // Delete all cloud
                           if (hasApi()) {
-                            const remaining = (await getSharedMedia()).filter(m => m.type !== 'audio');
-                            await fetch(`${import.meta.env.VITE_API_URL}/media`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(remaining) });
+                            for (const t of cloudAudio) await deleteSharedMedia(t.id);
                           }
                           await loadData(); await loadCloudMedia();
                           setStatusMsg('🗑 All audio deleted');
@@ -617,14 +614,8 @@ const AdminView: React.FC<AdminViewProps> = ({
                               <i className="fas fa-play text-[8px]"></i>
                             </button>
                             <button onClick={async () => {
-                              // Delete local
                               await dbService.deleteMedia(item.id);
-                              // Delete from cloud if it's there
-                              if (hasApi() && isCloud) {
-                                const all = await getSharedMedia();
-                                const updated = all.filter((m: any) => m.id !== item.id);
-                                await fetch(`${import.meta.env.VITE_API_URL}/media`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-                              }
+                              if (hasApi() && isCloud) await deleteSharedMedia(item.id);
                               await loadData(); await loadCloudMedia();
                             }} className="w-7 h-7 bg-red-50 text-red-400 rounded-full flex items-center justify-center hover:bg-red-100">
                               <i className="fas fa-trash text-[7px]"></i>
