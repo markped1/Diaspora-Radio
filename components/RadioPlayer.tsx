@@ -230,19 +230,26 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     setErrorMessage('');
 
     if (audio.src !== streamUrl) {
-      isStreamRef.current = true;
-      audio.removeAttribute('crossorigin');
+      isStreamRef.current = !streamUrl.startsWith('blob:');
+      if (isStreamRef.current) audio.removeAttribute('crossorigin');
+      else audio.crossOrigin = null;
       audio.src = streamUrl;
       audio.load();
       loadingUrlRef.current = streamUrl;
     }
 
-    try {
-      await audio.play();
-    } catch (err: any) {
-      setStatus('ERROR');
-      setErrorMessage(err.message || 'Failed to play');
-      loadingUrlRef.current = null;
+    // Wait for canplay then play
+    const doPlay = () => {
+      audio.play().catch((err: any) => {
+        setStatus('ERROR');
+        setErrorMessage(err.name === 'NotAllowedError' ? 'Tap ▶ to play' : (err.message || 'Failed to play'));
+        loadingUrlRef.current = null;
+      });
+    };
+    if (audio.readyState >= 3) {
+      doPlay();
+    } else {
+      audio.addEventListener('canplay', doPlay, { once: true });
     }
   };
 
