@@ -185,7 +185,6 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
   // ── Main play/pause handler — MUST be synchronous for mobile ──────────────
   const handlePlayPause = () => {
-    // Broadcast control
     if (isBroadcasting) {
       isBroadcastPaused() ? resumeBroadcast() : pauseBroadcast();
       return;
@@ -194,53 +193,44 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     const audio = audioEl.current;
     if (!audio) return;
 
-    // Pause if playing
     if (playing) {
       audio.pause();
       return;
     }
 
-    // ── Step 2: Ensure src is set (synchronous) ───────────────────────────
-    const url = activeTrackUrl || dbService.getLiveStreamUrl() || null;
+    // Get the best available URL
+    const url = activeTrackUrl || dbService.getLiveStreamUrl() || loadedUrl.current || null;
 
-    if (!url && !audio.src) {
-      // No URL at all — fetch from Supabase (async, but show loading state)
+    if (!url) {
+      // No URL anywhere — fetch from Supabase
       setLoading(true);
       setError('');
-      if (hasApi()) {
-        getLiveState().then(live => {
-          const trackUrl = live?.track?.url;
-          if (trackUrl?.startsWith('http') && audioEl.current) {
-            audioEl.current.removeAttribute('crossorigin');
-            audioEl.current.src = trackUrl;
-            audioEl.current.load();
-            loadedUrl.current = trackUrl;
-            // Note: play() here is async from gesture — may be blocked on some mobile
-            // but this is the fallback path when no URL was pre-loaded
-            audioEl.current.play().catch(() => {
-              setLoading(false);
-              setError('Tap ▶ again to play');
-            });
-          } else {
+      getLiveState().then(live => {
+        const trackUrl = live?.track?.url;
+        if (trackUrl?.startsWith('http') && audioEl.current) {
+          audioEl.current.removeAttribute('crossorigin');
+          audioEl.current.src = trackUrl;
+          loadedUrl.current = trackUrl;
+          audioEl.current.play().catch(() => {
             setLoading(false);
-            setError('No stream. Admin needs to start playing.');
+            setError('Tap ▶ again to play');
             setTimeout(() => setError(''), 4000);
-          }
-        }).catch(() => {
+          });
+        } else {
           setLoading(false);
-          setError('Connection error. Try again.');
+          setError('No stream. Admin needs to start playing.');
           setTimeout(() => setError(''), 4000);
-        });
-      } else {
+        }
+      }).catch(() => {
         setLoading(false);
-        setError('No stream available.');
-        setTimeout(() => setError(''), 3000);
-      }
+        setError('Connection error. Try again.');
+        setTimeout(() => setError(''), 4000);
+      });
       return;
     }
 
-    // ── Step 3: Set src if not already loaded ─────────────────────────────
-    if (url && loadedUrl.current !== url) {
+    // Load URL if not already loaded
+    if (loadedUrl.current !== url) {
       if (url.startsWith('blob:') || url.startsWith('data:')) {
         audio.crossOrigin = null;
       } else if (url.includes('cloudinary.com')) {
@@ -253,54 +243,15 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       loadedUrl.current = url;
     }
 
-    // ── Step 4: PLAY — synchronous, inside user gesture ───────────────────
+    // Play synchronously inside user gesture
     setLoading(true);
     setError('');
-
-    // If src not loaded yet, fetch and play
-    const currentSrc = audio.src;
-    const srcIsEmpty = !currentSrc || currentSrc === window.location.href || currentSrc === window.location.origin + '/';
-
-    if (srcIsEmpty) {
-      // Fetch URL from Supabase then play
-      if (hasApi()) {
-        getLiveState().then(live => {
-          const trackUrl = live?.track?.url;
-          if (trackUrl?.startsWith('http') && audioEl.current) {
-            audioEl.current.removeAttribute('crossorigin');
-            audioEl.current.src = trackUrl;
-            loadedUrl.current = trackUrl;
-            audioEl.current.play().catch((err: any) => {
-              setLoading(false);
-              setError(err.name === 'NotAllowedError' ? 'Tap ▶ again to play' : 'Playback failed');
-              setTimeout(() => setError(''), 4000);
-            });
-          } else {
-            setLoading(false);
-            setError('No stream. Admin needs to start playing.');
-            setTimeout(() => setError(''), 4000);
-          }
-        }).catch(() => {
-          setLoading(false);
-          setError('Connection error. Try again.');
-          setTimeout(() => setError(''), 4000);
-        });
-      } else {
-        setLoading(false);
-        setError('No stream available.');
-        setTimeout(() => setError(''), 3000);
-      }
-      return;
-    }
-
     audio.play().catch((err: any) => {
       setLoading(false);
       if (err.name === 'NotAllowedError') {
         setError('Tap ▶ to play');
         setTimeout(() => setError(''), 4000);
-      } else if (err.name === 'AbortError') {
-        // Ignore — happens when src changes mid-play
-      } else {
+      } else if (err.name !== 'AbortError') {
         setError(err.message || 'Playback failed');
       }
     });
