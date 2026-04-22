@@ -49,22 +49,31 @@ function getSessionId(): string {
 
 // ── Fetch geo from free IP API ────────────────────────────────────────────────
 async function getGeoInfo(): Promise<{ region: string; country: string; city: string }> {
-  // Try multiple free geo APIs in order
-  const apis = [
-    'https://ipapi.co/json/',
-    'https://ip-api.com/json/?fields=continentCode,country,city',
-    'https://ipwho.is/',
-  ];
-  for (const api of apis) {
-    try {
-      const res = await fetch(api, { signal: AbortSignal.timeout(4000) });
+  // ipapi.co works from browsers over HTTPS
+  try {
+    const res = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(4000) });
+    if (res.ok) {
       const data = await res.json();
-      const region = data.continent_code || data.continentCode || data.continent || 'Unknown';
-      const country = data.country_name || data.country || 'Unknown';
+      const region = data.continent_code || 'Unknown';
+      const country = data.country_name || 'Unknown';
       const city = data.city || 'Unknown';
       if (country !== 'Unknown') return { region, country, city };
-    } catch { /* try next */ }
-  }
+    }
+  } catch { /* try next */ }
+
+  // Fallback: geojs.io — no auth, HTTPS, browser-friendly
+  try {
+    const res = await fetch('https://get.geojs.io/v1/ip/geo.json', { signal: AbortSignal.timeout(4000) });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        region: data.continent_code || 'Unknown',
+        country: data.country || 'Unknown',
+        city: data.city || 'Unknown',
+      };
+    }
+  } catch { /* silent */ }
+
   return { region: 'Unknown', country: 'Unknown', city: 'Unknown' };
 }
 
