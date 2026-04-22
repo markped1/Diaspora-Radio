@@ -9,7 +9,6 @@ import { CHANNEL_INTRO, DESIGNER_NAME, APP_NAME } from '../constants';
 interface ListenerViewProps {
   news: NewsItem[];
   onStateChange: (isPlaying: boolean) => void;
-  isRadioPlaying: boolean;
   sponsoredVideos: MediaFile[];
   activeTrackUrl: string | null;
   currentTrackName: string;
@@ -70,7 +69,6 @@ const ListenerView: React.FC<ListenerViewProps> = ({
   sponsoredVideos,
   reports,
   adminMessages = [],
-  isRadioPlaying,
   onStateChange,
 }) => {
   const [location, setLocation] = useState<string>('Syncing...');
@@ -85,20 +83,9 @@ const ListenerView: React.FC<ListenerViewProps> = ({
 
   const timerRef = useRef<number | null>(null);
 
-  // When radio starts playing, mute TV audio automatically
-  useEffect(() => {
-    if (isRadioPlaying) setTvAudioOn(false);
-  }, [isRadioPlaying]);
-
-  // Listener taps TV sound button
+  // TV audio is independent — user controls it manually
   const handleTvAudioToggle = () => {
-    if (!tvAudioOn) {
-      // Turn TV audio ON — stop radio separately without triggering re-render loop
-      setTvAudioOn(true);
-      onStateChange(false);
-    } else {
-      setTvAudioOn(false);
-    }
+    setTvAudioOn(prev => !prev);
   };
 
   const liveVideosRef = useRef<MediaFile[]>([]);
@@ -225,7 +212,7 @@ const ListenerView: React.FC<ListenerViewProps> = ({
                 </button>
                 {/* Stop */}
                 <button
-                  onClick={() => { setTvAudioOn(false); onStateChange(false); }}
+                  onClick={() => { setTvAudioOn(false); }}
                   className="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center text-white transition-all active:scale-90">
                   <i className="fas fa-stop text-[9px]"></i>
                 </button>
