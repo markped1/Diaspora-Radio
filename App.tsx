@@ -306,6 +306,7 @@ const App: React.FC = () => {
       if (saved) {
         setActiveTrackUrl(saved);
         setCurrentTrackName('Live Stream');
+        setIsRadioPlaying(true);
         return;
       }
       // 2. If Supabase is configured, fetch live state immediately
@@ -316,6 +317,7 @@ const App: React.FC = () => {
           if (url?.startsWith('http')) {
             setActiveTrackUrl(url);
             setCurrentTrackName(live?.track?.name || 'Live Stream');
+            setIsRadioPlaying(true);
             dbService.setLiveStreamUrl(url);
           }
         } catch { /* silent — fetchData will retry */ }
