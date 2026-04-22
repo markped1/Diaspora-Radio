@@ -19,23 +19,26 @@ async function handleRequest(request) {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
-  // Parse the full request URL to get query params
-  const reqUrl = new URL(request.url);
+  // Cloudflare sometimes strips query params — read the full URL string directly
+  const rawUrl = request.url;
+  const qIndex = rawUrl.indexOf('?url=');
   
-  // Support both ?url= and path-based: /proxy/https://...
-  let target = reqUrl.searchParams.get('url');
-  
-  // Also try reading from the path if no query param
-  if (!target) {
-    const path = reqUrl.pathname.replace(/^\//, '');
-    if (path.startsWith('http')) target = decodeURIComponent(path);
+  let target = null;
+  if (qIndex !== -1) {
+    target = decodeURIComponent(rawUrl.substring(qIndex + 5));
+  } else {
+    // Try standard URL parsing as fallback
+    try {
+      const parsed = new URL(rawUrl);
+      target = parsed.searchParams.get('url');
+    } catch {}
   }
 
   if (!target) {
-    return new Response('NDR CORS Proxy OK — Usage: ?url=https://stream.m3u8\nRequest URL: ' + request.url, {
-      status: 200,
-      headers: { ...CORS_HEADERS, 'Content-Type': 'text/plain' },
-    });
+    return new Response(
+      'NDR CORS Proxy OK\nUsage: ?url=https://stream.m3u8\nRaw request URL: ' + rawUrl,
+      { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'text/plain' } }
+    );
   }
 
   if (!target.startsWith('http://') && !target.startsWith('https://')) {
@@ -63,7 +66,8 @@ async function handleRequest(request) {
 
     if (isM3u8) {
       const text = await upstream.text();
-      const proxyBase = reqUrl.protocol + '//' + reqUrl.host + '/?url=';
+      const workerBase = rawUrl.split('?')[0];
+      const proxyBase = workerBase + '?url=';
 
       const rewritten = text.split('\n').map(line => {
         const trimmed = line.trim();
