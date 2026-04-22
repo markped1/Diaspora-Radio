@@ -42,6 +42,8 @@ const App: React.FC = () => {
   useEffect(() => { activeTrackIdRef.current = activeTrackId; }, [activeTrackId]);
   const activeTrackUrlRef = useRef<string | null>(null);
   useEffect(() => { activeTrackUrlRef.current = activeTrackUrl; }, [activeTrackUrl]);
+  const isPlayingRef = useRef(false);
+  useEffect(() => { isPlayingRef.current = isRadioPlaying; }, [isRadioPlaying]);
   const playlistRef = useRef<MediaFile[]>([]);
   const mediaUrlCache = useRef<Map<string, string>>(new Map());
 
@@ -106,87 +108,17 @@ const App: React.FC = () => {
         }
       }
 
-      // Sync cloud state in background — non-blocking, doesn't slow down UI
+      // Sync cloud state is now handled by the dedicated syncLiveState interval
       if (hasApi()) {
         if (apiStatus === 'none') setApiStatus('checking');
-        getLiveState().then(live => {
-          setApiStatus('connected');
-          // Sync cloud state to LISTENERS only — Admin is the source of truth
-          if (roleRef.current === UserRole.LISTENER) {
-            if (live.track?.url?.startsWith('http')) {
-              // Admin is playing a track — sync URL and auto-start
-              if (activeTrackUrlRef.current !== live.track.url) {
-                setActiveTrackUrl(live.track.url);
-                setCurrentTrackName(live.track.name || '');
-              }
-              setIsRadioPlaying(true);
-            } else if (live.stream?.startsWith('http')) {
-              // Admin set a live stream URL — sync and auto-start
-              if (activeTrackUrlRef.current !== live.stream) {
-                setActiveTrackUrl(live.stream);
-                setCurrentTrackName('Live Stream');
-                dbService.setLiveStreamUrl(live.stream);
-              }
-              setIsRadioPlaying(true);
-            } else if (live.track === null && !live.stream?.startsWith('http')) {
-              // Admin explicitly stopped — only stop if we were synced to admin
-              // Don't stop if listener is playing their own local track
-              setActiveTrackUrl(null);
-              setCurrentTrackName('');
-              setIsRadioPlaying(false);
-            }
-          }
-          // Always persist stream URL locally for offline fallback
-          if (live.stream?.startsWith('http')) {
-            dbService.setLiveStreamUrl(live.stream);
-          }
-          if (live.messages?.length) setAdminMessages(live.messages);
-          // Sync live TV — only update if TV state actually changed
-          if (live.tv?.url) {
-            const cloudTv: MediaFile = {
-              id: 'cloud-tv-live',
-              name: live.tv.name || 'Live TV',
-              url: live.tv.url,
-              type: (live.tv.type as any) || 'youtube',
-              youtubeId: live.tv.youtubeId || undefined,
-              caption: live.tv.caption || '',
-              timestamp: Date.now(),
-              isLive: true,
-            };
-            setSponsoredMedia(prev => {
-              const existing = prev.find(m => m.id === 'cloud-tv-live');
-              // Only update if URL changed — prevents unnecessary re-renders
-              if (existing?.url === cloudTv.url) return prev;
-              const withoutCloudTv = prev.filter(m => m.id !== 'cloud-tv-live');
-              return [cloudTv, ...withoutCloudTv];
-            });
-          } else if (live.tv === null) {
-            // Only remove if explicitly null (admin took offline), not undefined
-            setSponsoredMedia(prev => prev.filter(m => m.id !== 'cloud-tv-live'));
-          }
-        }).catch(err => {
-          console.error("API Error:", err);
-          setApiStatus('error');
-        });
-
         getSharedMedia().then(cloudMedia => {
           if (cloudMedia.length > 0) {
-            // Only merge if listener hasn't started playing yet — avoid disrupting active playback
             if (!activeTrackUrlRef.current) {
               setAudioPlaylist(prev => {
-                const merged = [...cloudMedia.filter(c => c.type === 'audio'), ...prev.filter(p => !cloudMedia.find(c => c.id === p.id))];
+                const merged = [...cloudMedia.filter((c: any) => c.type === 'audio'), ...prev.filter(p => !cloudMedia.find((c: any) => c.id === p.id))];
                 return merged;
               });
             }
-            setSponsoredMedia(prev => {
-              const cloudTvItem = prev.find(m => m.id === 'cloud-tv-live');
-              const nonAudio = cloudMedia.filter(c => c.type !== 'audio');
-              // Only add items not already present
-              const newItems = nonAudio.filter(c => !prev.find(p => p.id === c.id));
-              if (newItems.length === 0) return prev;
-              const merged = [...newItems, ...prev.filter(p => !nonAudio.find(c => c.id === p.id) && p.id !== 'cloud-tv-live')];
-              return cloudTvItem ? [cloudTvItem, ...merged] : merged;
-            });
           }
         }).catch(() => {});
       }
@@ -309,47 +241,76 @@ const App: React.FC = () => {
   }, [runScheduledBroadcast]);
 
   useEffect(() => {
-    // On mount: immediately pre-load whatever URL we can find so the player
-    // is ready before the user taps — no waiting for fetchData to complete
-    const preloadUrl = async () => {
-      // 1. Check localStorage first (instant, no network)
-      const saved = dbService.getLiveStreamUrl();
-      if (saved) {
-        setActiveTrackUrl(saved);
-        setCurrentTrackName('Live Stream');
-        setIsRadioPlaying(true);
-        return;
-      }
-      // 2. If Supabase is configured, fetch live state immediately
-      if (hasApi()) {
-        try {
-          const live = await getLiveState();
-          const url = live?.track?.url || live?.stream;
-          if (url?.startsWith('http')) {
-            setActiveTrackUrl(url);
-            setCurrentTrackName(live?.track?.name || 'Live Stream');
-            setIsRadioPlaying(true);
-            dbService.setLiveStreamUrl(url);
-          }
-        } catch { /* silent — fetchData will retry */ }
-      }
-    };
-    preloadUrl();
-
     fetchData();
     refreshNews();
-
     const interactionHandler = () => setHasInteracted(true);
     window.addEventListener('click', interactionHandler, { once: true });
-
-    // Poll cloud state every 3 seconds so listeners stay in sync with admin
-    const syncInterval = hasApi() ? setInterval(() => fetchData(), 3000) : null;
-
-    return () => {
-      window.removeEventListener('click', interactionHandler);
-      if (syncInterval) clearInterval(syncInterval);
-    };
+    return () => window.removeEventListener('click', interactionHandler);
   }, [fetchData, refreshNews]);
+
+  useEffect(() => {
+    // ── LISTENER SYNC: runs once on mount, then every 5s ──────────────────    // Completely separate from fetchData — never touches audio while playing
+    if (!hasApi()) return;
+
+    const syncLiveState = async () => {
+      try {
+        const live = await getLiveState();
+        if (roleRef.current !== UserRole.LISTENER) return;
+
+        if (live.track?.url?.startsWith('http')) {
+          // Only update if URL changed AND listener isn't mid-track
+          if (activeTrackUrlRef.current !== live.track.url) {
+            setActiveTrackUrl(live.track.url);
+            setCurrentTrackName(live.track.name || '');
+            dbService.setLiveStreamUrl(live.track.url);
+          }
+          setIsRadioPlaying(true);
+        } else if (live.stream?.startsWith('http')) {
+          if (activeTrackUrlRef.current !== live.stream) {
+            setActiveTrackUrl(live.stream);
+            setCurrentTrackName('Live Stream');
+            dbService.setLiveStreamUrl(live.stream);
+          }
+          setIsRadioPlaying(true);
+        } else if (live.track === null && !live.stream?.startsWith('http')) {
+          setActiveTrackUrl(null);
+          setCurrentTrackName('');
+          setIsRadioPlaying(false);
+          dbService.setLiveStreamUrl('');
+        }
+
+        if (live.messages?.length) setAdminMessages(live.messages);
+
+        if (live.tv?.url) {
+          setSponsoredMedia(prev => {
+            const existing = prev.find(m => m.id === 'cloud-tv-live');
+            if (existing?.url === live.tv.url) return prev;
+            const cloudTv: MediaFile = {
+              id: 'cloud-tv-live',
+              name: live.tv.name || 'Live TV',
+              url: live.tv.url,
+              type: (live.tv.type as any) || 'youtube',
+              youtubeId: live.tv.youtubeId || undefined,
+              caption: live.tv.caption || '',
+              timestamp: live.tv.url, // stable — use URL as timestamp key
+              isLive: true,
+            };
+            return [cloudTv, ...prev.filter(m => m.id !== 'cloud-tv-live')];
+          });
+        } else if (live.tv === null) {
+          setSponsoredMedia(prev => prev.filter(m => m.id !== 'cloud-tv-live'));
+        }
+
+        setApiStatus('connected');
+      } catch {
+        setApiStatus('error');
+      }
+    };
+
+    syncLiveState();
+    const interval = setInterval(syncLiveState, 5000);
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePlayNext = useCallback(() => {
     const list = playlistRef.current;
