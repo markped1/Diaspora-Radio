@@ -99,9 +99,11 @@ const App: React.FC = () => {
       setAdminMessages(msg || []);
       setReports(rep || []);
 
-      if (activeTrackIdRef.current) {
+      if (activeTrackIdRef.current && activeTrackIdRef.current !== 'live-stream') {
         const activeTrack = processedMedia.find(t => t.id === activeTrackIdRef.current);
-        if (activeTrack) setActiveTrackUrl(activeTrack.url);
+        if (activeTrack && activeTrack.url && activeTrack.url !== activeTrackUrlRef.current) {
+          setActiveTrackUrl(activeTrack.url);
+        }
       }
 
       // Sync cloud state in background — non-blocking, doesn't slow down UI
@@ -169,14 +171,20 @@ const App: React.FC = () => {
 
         getSharedMedia().then(cloudMedia => {
           if (cloudMedia.length > 0) {
-            setAudioPlaylist(prev => {
-              const merged = [...cloudMedia.filter(c => c.type === 'audio'), ...prev.filter(p => !cloudMedia.find(c => c.id === p.id))];
-              return merged;
-            });
+            // Only merge if listener hasn't started playing yet — avoid disrupting active playback
+            if (!activeTrackUrlRef.current) {
+              setAudioPlaylist(prev => {
+                const merged = [...cloudMedia.filter(c => c.type === 'audio'), ...prev.filter(p => !cloudMedia.find(c => c.id === p.id))];
+                return merged;
+              });
+            }
             setSponsoredMedia(prev => {
-              // Never overwrite the cloud-tv-live item pushed by admin
               const cloudTvItem = prev.find(m => m.id === 'cloud-tv-live');
-              const merged = [...cloudMedia.filter(c => c.type !== 'audio'), ...prev.filter(p => !cloudMedia.find(c => c.id === p.id) && p.id !== 'cloud-tv-live')];
+              const nonAudio = cloudMedia.filter(c => c.type !== 'audio');
+              // Only add items not already present
+              const newItems = nonAudio.filter(c => !prev.find(p => p.id === c.id));
+              if (newItems.length === 0) return prev;
+              const merged = [...newItems, ...prev.filter(p => !nonAudio.find(c => c.id === p.id) && p.id !== 'cloud-tv-live')];
               return cloudTvItem ? [cloudTvItem, ...merged] : merged;
             });
           }
