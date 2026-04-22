@@ -9,6 +9,7 @@ import { CHANNEL_INTRO, DESIGNER_NAME, APP_NAME } from '../constants';
 interface ListenerViewProps {
   news: NewsItem[];
   onStateChange: (isPlaying: boolean) => void;
+  isRadioPlaying: boolean;
   sponsoredVideos: MediaFile[];
   activeTrackUrl: string | null;
   currentTrackName: string;
@@ -18,11 +19,15 @@ interface ListenerViewProps {
 }
 
 // Memoized TV screen — only re-renders when currentAd or tvAudioOn actually changes
-const TvScreen = memo(({ currentAd, tvAudioOn, nextAd }: {
+const TvScreen = memo(({ currentAd, tvAudioOn, isRadioPlaying, nextAd }: {
   currentAd: MediaFile | null;
   tvAudioOn: boolean;
+  isRadioPlaying: boolean;
   nextAd: () => void;
 }) => {
+  // TV audio is active only when tvAudioOn AND radio is not playing
+  const tvHasAudio = tvAudioOn && !isRadioPlaying;
+
   if (!currentAd) {
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950 space-y-2">
@@ -35,7 +40,7 @@ const TvScreen = memo(({ currentAd, tvAudioOn, nextAd }: {
     return <img src={currentAd.url} className="w-full h-full object-cover" alt="ad" />;
   }
   if (currentAd.type === 'iptv') {
-    return <IptvPlayer url={currentAd.url} muted={!tvAudioOn} autoPlay className="w-full h-full object-contain" />;
+    return <IptvPlayer url={currentAd.url} muted={!tvHasAudio} autoPlay className="w-full h-full object-contain" />;
   }
   if (currentAd.type === 'youtube' && currentAd.url.includes('youtube.com/embed')) {
     return (
@@ -61,7 +66,7 @@ const TvScreen = memo(({ currentAd, tvAudioOn, nextAd }: {
       </div>
     );
   }
-  return <SponsoredVideo video={currentAd} onEnded={nextAd} isMutedByRadio={!tvAudioOn} />;
+  return <SponsoredVideo video={currentAd} onEnded={nextAd} isMutedByRadio={isRadioPlaying} />;
 });
 
 const ListenerView: React.FC<ListenerViewProps> = ({ 
@@ -69,6 +74,7 @@ const ListenerView: React.FC<ListenerViewProps> = ({
   sponsoredVideos,
   reports,
   adminMessages = [],
+  isRadioPlaying,
   onStateChange,
 }) => {
   const [location, setLocation] = useState<string>('Syncing...');
@@ -195,7 +201,7 @@ const ListenerView: React.FC<ListenerViewProps> = ({
 
           {/* ── SCREEN ── */}
           <div className="relative bg-black" style={{ height: '276px' }}>
-            <TvScreen currentAd={currentAd} tvAudioOn={tvAudioOn} nextAd={nextAd} />
+            <TvScreen currentAd={currentAd} tvAudioOn={tvAudioOn} isRadioPlaying={isRadioPlaying} nextAd={nextAd} />
           </div>
 
           {/* ── BOTTOM CONTROLS ── */}

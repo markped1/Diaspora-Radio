@@ -450,7 +450,7 @@ const App: React.FC = () => {
 
         {role === UserRole.LISTENER ? (
           <ListenerView
-            news={news} onStateChange={setIsRadioPlaying}
+            news={news} onStateChange={setIsRadioPlaying} isRadioPlaying={isRadioPlaying}
             sponsoredVideos={sponsoredMedia} activeTrackUrl={activeTrackUrl}
             currentTrackName={currentTrackName} adminMessages={adminMessages} reports={reports}
             onPlayTrack={(t) => { setHasInteracted(true); setActiveTrackId(t.id); setActiveTrackUrl(t.url); setCurrentTrackName(cleanTrackName(t.name)); setIsRadioPlaying(true); }}
