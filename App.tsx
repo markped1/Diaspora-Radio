@@ -139,7 +139,7 @@ const App: React.FC = () => {
             dbService.setLiveStreamUrl(live.stream);
           }
           if (live.messages?.length) setAdminMessages(live.messages);
-          // Sync live TV to sponsored media so ListenerView shows it
+          // Sync live TV — only update if TV state actually changed
           if (live.tv?.url) {
             const cloudTv: MediaFile = {
               id: 'cloud-tv-live',
@@ -152,11 +152,14 @@ const App: React.FC = () => {
               isLive: true,
             };
             setSponsoredMedia(prev => {
+              const existing = prev.find(m => m.id === 'cloud-tv-live');
+              // Only update if URL changed — prevents unnecessary re-renders
+              if (existing?.url === cloudTv.url) return prev;
               const withoutCloudTv = prev.filter(m => m.id !== 'cloud-tv-live');
               return [cloudTv, ...withoutCloudTv];
             });
           } else if (live.tv === null) {
-            // Admin took TV offline
+            // Only remove if explicitly null (admin took offline), not undefined
             setSponsoredMedia(prev => prev.filter(m => m.id !== 'cloud-tv-live'));
           }
         }).catch(err => {

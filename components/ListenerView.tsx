@@ -54,22 +54,25 @@ const ListenerView: React.FC<ListenerViewProps> = ({
     }
   };
 
+  const liveVideosRef = useRef<MediaFile[]>([]);
+
   const nextAd = useCallback(() => {
-    const live = sponsoredVideos.filter(v => v.isLive);
-    if (live.length > 0) setAdIndex(prev => (prev + 1) % live.length);
-  }, [sponsoredVideos]);
+    const live = liveVideosRef.current;
+    if (live.length > 1) setAdIndex(prev => (prev + 1) % live.length);
+  }, []);
 
   useEffect(() => {
-    if (sponsoredVideos.length > 0) {
+    const live = sponsoredVideos.filter(v => v.isLive);
+    liveVideosRef.current = live;
+    // Only start rotation timer if there are multiple items
+    if (live.length > 1) {
       if (timerRef.current) window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => {
-        nextAd();
-      }, 20000);
+      timerRef.current = window.setTimeout(nextAd, 20000);
     }
     return () => {
       if (timerRef.current) window.clearTimeout(timerRef.current);
     };
-  }, [adIndex, sponsoredVideos.length, nextAd]);
+  }, [adIndex, sponsoredVideos, nextAd]);
 
   useEffect(() => {
     if (navigator.geolocation) {
