@@ -18,15 +18,29 @@ interface ListenerViewProps {
   onPlayTrack: (track: MediaFile) => void;
 }
 
-// Memoized TV screen — only re-renders when currentAd or tvAudioOn actually changes
+// Memoized TV screen — only re-renders when currentAd or tvAudioOn or isRadioPlaying changes
 const TvScreen = memo(({ currentAd, tvAudioOn, isRadioPlaying, nextAd }: {
   currentAd: MediaFile | null;
   tvAudioOn: boolean;
   isRadioPlaying: boolean;
   nextAd: () => void;
 }) => {
-  // TV audio is active only when tvAudioOn AND radio is not playing
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const tvHasAudio = tvAudioOn && !isRadioPlaying;
+
+  // Control YouTube iframe volume via postMessage — no remount needed
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    try {
+      if (tvHasAudio) {
+        iframe.contentWindow?.postMessage('{"event":"command","func":"unMute","args":""}', '*');
+        iframe.contentWindow?.postMessage('{"event":"command","func":"setVolume","args":[100]}', '*');
+      } else {
+        iframe.contentWindow?.postMessage('{"event":"command","func":"mute","args":""}', '*');
+      }
+    } catch { /* cross-origin — ignore */ }
+  }, [tvHasAudio]);
 
   if (!currentAd) {
     return (
@@ -43,10 +57,18 @@ const TvScreen = memo(({ currentAd, tvAudioOn, isRadioPlaying, nextAd }: {
     return <IptvPlayer url={currentAd.url} muted={!tvHasAudio} autoPlay className="w-full h-full object-contain" />;
   }
   if (currentAd.type === 'youtube' && currentAd.url.includes('youtube.com/embed')) {
+    // Add enablejsapi=1 so postMessage mute/unmute works
+    const src = (() => {
+      const base = currentAd.url.includes('?')
+        ? currentAd.url + '&enablejsapi=1'
+        : currentAd.url + '?enablejsapi=1';
+      return base;
+    })();
     return (
       <iframe
+        ref={iframeRef}
         key={currentAd.id}
-        src={currentAd.url.includes('?') ? currentAd.url + '&mute=0' : currentAd.url + '?mute=0'}
+        src={src}
         className="w-full h-full"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen

@@ -134,12 +134,12 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
     };
   }, [url]);
 
-  // Sync muted state after playing starts
+  // Sync muted state whenever it changes — regardless of play status
   useEffect(() => {
-    if (videoRef.current && status === 'playing') {
+    if (videoRef.current) {
       videoRef.current.muted = muted;
     }
-  }, [muted, status]);
+  }, [muted]);
 
   // User taps to play — unmute and play with user gesture
   const handleTapToPlay = () => {
