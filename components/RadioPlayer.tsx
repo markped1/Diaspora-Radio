@@ -1,21 +1,18 @@
 /**
  * RadioPlayer — Cross-platform audio player
  *
- * Compliant with:
- * - W3C HTML Living Standard (HTMLMediaElement)
- * - iOS Safari autoplay policy (requires synchronous play() inside gesture)
- * - Android WebView / Capacitor APK (no AudioContext required for basic playback)
- * - Chrome autoplay policy (muted autoplay OR gesture-gated)
- * - HLS streams via native <audio> on Safari/iOS, hls.js on everything else
+ * Platform compliance:
+ * - iOS Safari: play() MUST be synchronous inside user gesture. Never inside .then()/.catch()
+ * - Android WebView / Capacitor: same rule. play() synchronous only.
+ * - Chrome autoplay policy: gesture-gated play() always works
+ * - HLS: hls.js on MSE browsers, native on Safari/iOS
  *
- * Key rules followed:
- * 1. Single persistent Audio instance — never recreated on re-render
- * 2. src + load() set outside gesture (pre-buffering)
- * 3. play() called synchronously inside the tap handler — no await, no .then chains
- * 4. crossOrigin set correctly per URL type to avoid CORS taint
- * 5. Graceful HLS support: hls.js for MSE browsers, native for Safari
- * 6. Error recovery: retry once on network error, surface clear messages otherwise
- * 7. Media Session API for lock-screen / notification controls
+ * Architecture:
+ * 1. Single persistent Audio instance — never recreated
+ * 2. URL pre-loaded via useEffect (no gesture needed for src+load)
+ * 3. play() called synchronously inside tap handler — zero async before it
+ * 4. forcePlaying=true triggers auto-play attempt (for admin-pushed tracks)
+ * 5. Media Session API for lock-screen controls
  */
 
 import React, { useRef, useEffect, useState } from 'react';
@@ -29,8 +26,6 @@ import {
   stopBroadcast,
   setBroadcastVolume,
 } from '../services/aiDjService';
-import { dbService } from '../services/dbService';
-import { hasApi, getLiveState } from '../services/apiService';
 
 interface RadioPlayerProps {
   onStateChange: (playing: boolean) => void;
@@ -45,21 +40,22 @@ interface RadioPlayerProps {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function isHlsUrl(url: string) {
-  return url.includes('.m3u8') || url.includes('m3u8');
+  return url.includes('.m3u8');
 }
 
-function setCrossOrigin(audio: HTMLAudioElement, url: string) {
+function applyCrossOrigin(audio: HTMLAudioElement, url: string) {
   if (url.startsWith('blob:') || url.startsWith('data:')) {
     audio.removeAttribute('crossorigin');
-  } else if (url.includes('cloudinary.com') || url.includes('res.cloudinary')) {
+  } else if (url.includes('cloudinary.com')) {
     audio.crossOrigin = 'anonymous';
   } else {
-    // For external streams (Zeno, Icecast, etc.) — no crossOrigin avoids CORS preflight failures
+    // External streams (Zeno, Icecast, SHOUTcast) — no crossOrigin
+    // avoids CORS preflight that many stream servers don't support
     audio.removeAttribute('crossorigin');
   }
 }
 
-function fmt(s: number) {
+function fmtTime(s: number) {
   if (!isFinite(s) || s < 0) return '0:00';
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 }
@@ -75,25 +71,26 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   isDucking = false,
   musicVolumeOverride = null,
 }) => {
-  const [playing, setPlaying]       = useState(false);
-  const [loading, setLoading]       = useState(false);
-  const [error, setError]           = useState('');
-  const [volume, setVolume]         = useState(1);
-  const [progress, setProgress]     = useState(0);
-  const [duration, setDuration]     = useState(0);
+  const [playing, setPlaying]         = useState(false);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState('');
+  const [volume, setVolume]           = useState(1);
+  const [progress, setProgress]       = useState(0);
+  const [duration, setDuration]       = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
 
-  // Persistent refs — never recreated
-  const audioRef    = useRef<HTMLAudioElement | null>(null);
-  const hlsRef      = useRef<Hls | null>(null);
-  const loadedUrl   = useRef<string | null>(null);
-  const onEndedRef  = useRef(onTrackEnded);
-  const volumeRef   = useRef(1);
-  const retryRef    = useRef(false);
+  const audioRef   = useRef<HTMLAudioElement | null>(null);
+  const hlsRef     = useRef<Hls | null>(null);
+  const loadedUrl  = useRef<string | null>(null);
+  const onEndedRef = useRef(onTrackEnded);
+  const volRef     = useRef(1);
+  const retryRef   = useRef(false);
+  // Track whether a play() was attempted so forcePlaying can trigger it
+  const pendingPlayRef = useRef(false);
 
   useEffect(() => { onEndedRef.current = onTrackEnded; }, [onTrackEnded]);
-  useEffect(() => { volumeRef.current = volume; }, [volume]);
+  useEffect(() => { volRef.current = volume; }, [volume]);
 
   // ── Poll broadcast state ─────────────────────────────────────────────────
   useEffect(() => {
@@ -105,7 +102,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   useEffect(() => {
     const audio = new Audio();
     audio.preload = 'auto';
-    (audio as any).playsInline = true; // required for iOS inline playback
+    (audio as any).playsInline = true;
     audioRef.current = audio;
 
     const onPlay    = () => { setPlaying(true);  setLoading(false); setError(''); onStateChange(true); };
@@ -119,15 +116,12 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
         setProgress((audio.currentTime / audio.duration) * 100);
       }
     };
-    const onMeta = () => {
-      if (isFinite(audio.duration)) setDuration(audio.duration);
-    };
+    const onMeta = () => { if (isFinite(audio.duration)) setDuration(audio.duration); };
     const onError = () => {
       const src = audio.src;
       if (!src || src === window.location.href || src === window.location.origin + '/') return;
-
-      // Retry once on network error (code 2) — handles transient stream drops
       const code = audio.error?.code;
+      // Retry once on transient network drop
       if (code === MediaError.MEDIA_ERR_NETWORK && !retryRef.current) {
         retryRef.current = true;
         setTimeout(() => {
@@ -139,12 +133,11 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
         return;
       }
       retryRef.current = false;
-
       const msgs: Record<number, string> = {
-        [MediaError.MEDIA_ERR_ABORTED]:  'Playback aborted',
-        [MediaError.MEDIA_ERR_NETWORK]:  'Network error — check connection',
-        [MediaError.MEDIA_ERR_DECODE]:   'Audio decode error',
-        [MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED]: 'Format not supported',
+        [MediaError.MEDIA_ERR_ABORTED]:           'Playback aborted',
+        [MediaError.MEDIA_ERR_NETWORK]:           'Network error — check connection',
+        [MediaError.MEDIA_ERR_DECODE]:            'Audio decode error',
+        [MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED]: 'Stream format not supported',
       };
       setError(msgs[code ?? 0] ?? 'Playback error');
       setLoading(false);
@@ -152,18 +145,18 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       onStateChange(false);
     };
 
-    audio.addEventListener('play',            onPlay);
-    audio.addEventListener('pause',           onPause);
-    audio.addEventListener('playing',         onPlaying);
-    audio.addEventListener('waiting',         onWaiting);
-    audio.addEventListener('ended',           onEnded);
-    audio.addEventListener('timeupdate',      onTime);
-    audio.addEventListener('loadedmetadata',  onMeta);
-    audio.addEventListener('error',           onError);
+    audio.addEventListener('play',           onPlay);
+    audio.addEventListener('pause',          onPause);
+    audio.addEventListener('playing',        onPlaying);
+    audio.addEventListener('waiting',        onWaiting);
+    audio.addEventListener('ended',          onEnded);
+    audio.addEventListener('timeupdate',     onTime);
+    audio.addEventListener('loadedmetadata', onMeta);
+    audio.addEventListener('error',         onError);
 
     return () => {
       audio.pause();
-      audio.src = '';
+      audio.removeAttribute('src');
       hlsRef.current?.destroy();
       hlsRef.current = null;
       audioRef.current = null;
@@ -194,17 +187,11 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     setError('');
     setProgress(0); setDuration(0); setCurrentTime(0);
 
-    // Destroy previous HLS instance
-    if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
 
     if (isHlsUrl(activeTrackUrl) && Hls.isSupported()) {
-      // MSE-capable browsers: Chrome, Firefox, Edge, Android WebView
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        maxBufferLength: 30,
-        backBufferLength: 60,
-      });
+      const hls = new Hls({ enableWorker: true, lowLatencyMode: true, maxBufferLength: 30 });
       hlsRef.current = hls;
       audio.removeAttribute('crossorigin');
       hls.loadSource(activeTrackUrl);
@@ -217,13 +204,11 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
         }
       });
     } else {
-      // Safari/iOS native HLS, or plain MP3/AAC/OGG
-      setCrossOrigin(audio, activeTrackUrl);
+      applyCrossOrigin(audio, activeTrackUrl);
       audio.src = activeTrackUrl;
       audio.load();
     }
 
-    // Update Media Session metadata
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentTrackName || 'Live Stream',
@@ -232,27 +217,52 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     }
   }, [activeTrackUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Respond to forcePlaying = false (admin stopped) ─────────────────────
+  // ── forcePlaying: when admin pushes a track, attempt auto-play ───────────
+  // This handles the case where activeTrackUrl arrives AND forcePlaying=true
+  // simultaneously (admin tapped Go Live). We attempt play() here.
+  // On desktop/Android this works. On iOS it will be blocked (NotAllowedError)
+  // and the listener will see "Tap ▶ to play" — which is correct iOS behaviour.
   useEffect(() => {
-    if (!forcePlaying && audioRef.current && !audioRef.current.paused) {
-      audioRef.current.pause();
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (forcePlaying && activeTrackUrl && !playing) {
+      // Mark that we want to play — attempt it
+      pendingPlayRef.current = true;
+      setLoading(true);
+      audio.play().catch((err: DOMException) => {
+        setLoading(false);
+        pendingPlayRef.current = false;
+        if (err.name === 'NotAllowedError') {
+          // iOS/strict autoplay policy — user must tap
+          setError('Tap ▶ to play');
+          setTimeout(() => setError(''), 5000);
+        }
+        // AbortError = another play() interrupted this one — ignore
+      });
     }
-  }, [forcePlaying]);
+
+    if (!forcePlaying && !audio.paused) {
+      audio.pause();
+    }
+  }, [forcePlaying, activeTrackUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Volume / ducking ─────────────────────────────────────────────────────
   useEffect(() => {
     const target = musicVolumeOverride !== null
       ? musicVolumeOverride
-      : isDucking ? volumeRef.current * 0.15 : volumeRef.current;
+      : isDucking ? volRef.current * 0.15 : volRef.current;
     if (audioRef.current) audioRef.current.volume = Math.max(0, Math.min(1, target));
   }, [volume, isDucking, musicVolumeOverride]);
 
-  // ── Media Session action handlers ────────────────────────────────────────
+  // ── Media Session handlers ───────────────────────────────────────────────
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.setActionHandler('play',  () => triggerPlay());
-    navigator.mediaSession.setActionHandler('pause', () => audioRef.current?.pause());
-    navigator.mediaSession.setActionHandler('stop',  () => audioRef.current?.pause());
+    const play  = () => { if (audioRef.current) { setLoading(true); audioRef.current.play().catch(() => setLoading(false)); } };
+    const pause = () => audioRef.current?.pause();
+    navigator.mediaSession.setActionHandler('play',  play);
+    navigator.mediaSession.setActionHandler('pause', pause);
+    navigator.mediaSession.setActionHandler('stop',  pause);
     return () => {
       navigator.mediaSession.setActionHandler('play',  null);
       navigator.mediaSession.setActionHandler('pause', null);
@@ -260,60 +270,29 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Core play logic — extracted so Media Session can call it too ─────────
-  function triggerPlay() {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const url = activeTrackUrl || dbService.getLiveStreamUrl() || loadedUrl.current || null;
-
-    if (!url) {
-      // Nothing loaded — try fetching from cloud
-      setLoading(true);
-      setError('');
-      getLiveState().then(live => {
-        const trackUrl = live?.track?.url;
-        if (trackUrl?.startsWith('http') && audioRef.current) {
-          loadedUrl.current = trackUrl;
-          setCrossOrigin(audioRef.current, trackUrl);
-          audioRef.current.src = trackUrl;
-          audioRef.current.load();
-          audioRef.current.play().catch(() => {
-            setLoading(false);
-            setError('Tap ▶ again to play');
-            setTimeout(() => setError(''), 4000);
-          });
-        } else {
-          setLoading(false);
-          setError('No stream available. Admin needs to start playing.');
-          setTimeout(() => setError(''), 5000);
-        }
-      }).catch(() => {
-        setLoading(false);
-        setError('Connection error — try again');
-        setTimeout(() => setError(''), 4000);
-      });
+  // ── Play/Pause tap handler — MUST stay synchronous ──────────────────────
+  const handlePlayPause = () => {
+    if (isBroadcasting) {
+      isBroadcastPaused() ? resumeBroadcast() : pauseBroadcast();
       return;
     }
 
-    // Ensure URL is loaded
-    if (loadedUrl.current !== url) {
-      loadedUrl.current = url;
-      if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
-      if (isHlsUrl(url) && Hls.isSupported()) {
-        const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
-        hlsRef.current = hls;
-        audio.removeAttribute('crossorigin');
-        hls.loadSource(url);
-        hls.attachMedia(audio);
-      } else {
-        setCrossOrigin(audio, url);
-        audio.src = url;
-        audio.load();
-      }
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (playing) {
+      audio.pause();
+      return;
     }
 
-    // Synchronous play() — MUST stay synchronous for iOS/Android gesture compliance
+    // If no URL is loaded at all, show a clear message — do NOT do async here
+    if (!loadedUrl.current) {
+      setError('No stream available — admin needs to start playing');
+      setTimeout(() => setError(''), 5000);
+      return;
+    }
+
+    // Synchronous play() — required for iOS/Android gesture compliance
     setLoading(true);
     setError('');
     audio.play().catch((err: DOMException) => {
@@ -326,16 +305,6 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
         setTimeout(() => setError(''), 5000);
       }
     });
-  }
-
-  // ── Play/Pause tap handler ───────────────────────────────────────────────
-  const handlePlayPause = () => {
-    if (isBroadcasting) {
-      isBroadcastPaused() ? resumeBroadcast() : pauseBroadcast();
-      return;
-    }
-    if (playing) { audioRef.current?.pause(); return; }
-    triggerPlay();
   };
 
   const handleStop = () => {
@@ -358,28 +327,29 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     setProgress(parseFloat(e.target.value));
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────
-  const isStream = !duration || !isFinite(duration); // live stream = no duration
+  const isLiveStream = !duration || !isFinite(duration);
 
+  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col items-center w-full space-y-2">
       <Logo size="lg" isPlaying={playing} />
 
       {/* Progress / seek bar */}
       <div className="w-full px-0 -mt-4 relative z-20">
-        {isStream ? (
-          // Live stream — indeterminate bar
+        {isLiveStream ? (
           <div className="h-1 w-full bg-green-100 rounded-full overflow-hidden">
-            {loading
-              ? <div className="h-full bg-[#008751] animate-pulse w-full" />
-              : <div className="h-full bg-[#008751] transition-all duration-300" style={{ width: playing ? '100%' : '0%' }} />
-            }
+            <div
+              className={`h-full bg-[#008751] transition-all duration-300 ${loading ? 'animate-pulse w-full' : ''}`}
+              style={{ width: loading ? '100%' : playing ? '100%' : '0%' }}
+            />
           </div>
         ) : (
-          // File — seekable scrubber
           <div className="relative h-1 w-full">
             <div className="absolute inset-0 bg-green-100 rounded-full" />
-            <div className="absolute inset-y-0 left-0 bg-[#008751] rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+            <div
+              className="absolute inset-y-0 left-0 bg-[#008751] rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
             <input
               type="range" min="0" max="100" step="0.1"
               value={progress}
@@ -389,10 +359,10 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
             />
           </div>
         )}
-        {!isStream && (
+        {!isLiveStream && (
           <div className="flex justify-between mt-1 px-1">
-            <span className="text-[6px] font-bold text-green-700">{fmt(currentTime)}</span>
-            <span className="text-[6px] font-bold text-green-700">{fmt(duration)}</span>
+            <span className="text-[6px] font-bold text-green-700">{fmtTime(currentTime)}</span>
+            <span className="text-[6px] font-bold text-green-700">{fmtTime(duration)}</span>
           </div>
         )}
       </div>

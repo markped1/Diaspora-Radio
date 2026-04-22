@@ -105,22 +105,26 @@ const App: React.FC = () => {
         if (apiStatus === 'none') setApiStatus('checking');
         getLiveState().then(live => {
           setApiStatus('connected');
-          // Sync cloud track to LISTENERS only — Admin is the source of truth
+          // Sync cloud state to LISTENERS only — Admin is the source of truth
           if (roleRef.current === UserRole.LISTENER) {
             if (live.track?.url?.startsWith('http')) {
-              // Only update URL — never force-start playback
-              // Listener decides when to tap play
+              // Admin is playing a track — pre-load it so listener can tap play
               setActiveTrackUrl(live.track.url);
               setCurrentTrackName(live.track.name || '');
-              // Don't call setIsRadioPlaying(true) — that's the listener's choice
-            } else if (live.track === null) {
-              // Admin stopped — stop listener too
+            } else if (live.stream?.startsWith('http')) {
+              // Admin set a stream URL — pre-load it for listener
+              setActiveTrackUrl(live.stream);
+              setCurrentTrackName('Live Stream');
+              dbService.setLiveStreamUrl(live.stream);
+            } else if (live.track === null && !live.stream) {
+              // Admin explicitly stopped everything
               setActiveTrackUrl(null);
               setCurrentTrackName('');
               setIsRadioPlaying(false);
             }
           }
-          if (live.stream && roleRef.current === UserRole.LISTENER) {
+          // Always persist stream URL locally for offline fallback
+          if (live.stream) {
             dbService.setLiveStreamUrl(live.stream);
           }
           if (live.messages?.length) setAdminMessages(live.messages);
@@ -301,9 +305,18 @@ const App: React.FC = () => {
   const handlePlayNext = useCallback(() => {
     const list = playlistRef.current;
     if (list.length === 0) {
-      setActiveTrackId(null);
-      setActiveTrackUrl(null);
-      setCurrentTrackName('');
+      // Fall back to stream URL instead of going silent
+      const streamUrl = dbService.getLiveStreamUrl();
+      if (streamUrl) {
+        setActiveTrackId('live-stream');
+        setActiveTrackUrl(streamUrl);
+        setCurrentTrackName('Live Stream');
+        setIsRadioPlaying(true);
+      } else {
+        setActiveTrackId(null);
+        setActiveTrackUrl(null);
+        setCurrentTrackName('');
+      }
       return;
     }
     const currentIndex = list.findIndex(t => t.id === activeTrackId);
@@ -328,7 +341,7 @@ const App: React.FC = () => {
   const handlePlayAll = () => {
     setHasInteracted(true);
     if (audioPlaylist.length === 0) {
-      // Fall back to live stream URL if no tracks uploaded
+      // Fall back to saved stream URL
       const streamUrl = dbService.getLiveStreamUrl();
       if (streamUrl) {
         setActiveTrackId('live-stream');
@@ -336,6 +349,20 @@ const App: React.FC = () => {
         setCurrentTrackName('Live Stream');
         setIsRadioPlaying(true);
         if (hasApi()) setLiveTrack({ url: streamUrl, name: 'Live Stream' }).catch(() => {});
+      } else {
+        // Nothing at all — try fetching live state from cloud
+        if (hasApi()) {
+          getLiveState().then(live => {
+            const url = live?.track?.url || live?.stream;
+            if (url?.startsWith('http')) {
+              setActiveTrackId('live-stream');
+              setActiveTrackUrl(url);
+              setCurrentTrackName(live?.track?.name || 'Live Stream');
+              setIsRadioPlaying(true);
+              dbService.setLiveStreamUrl(url);
+            }
+          }).catch(() => {});
+        }
       }
       return;
     }
