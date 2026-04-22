@@ -176,15 +176,24 @@ const ListenerView: React.FC<ListenerViewProps> = ({
   const [isReporting, setIsReporting] = useState(false);
   const [adIndex, setAdIndex] = useState(0);
   const [shareFeedback, setShareFeedback] = useState('');
-  // TV is always visually on but audio is muted when radio is playing
   const [tvAudioOn, setTvAudioOn] = useState(false);
   const [tvVolume, setTvVolume] = useState(0.8);
-
+  const [showControls, setShowControls] = useState(false);
+  const controlsTimerRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
 
-  // TV audio is independent — user controls it manually
+  // Show controls on tap, auto-hide after 3s
+  const handleTvTap = () => {
+    setShowControls(true);
+    if (controlsTimerRef.current) window.clearTimeout(controlsTimerRef.current);
+    controlsTimerRef.current = window.setTimeout(() => setShowControls(false), 3000);
+  };
+
   const handleTvAudioToggle = () => {
     setTvAudioOn(prev => !prev);
+    // Reset hide timer after interaction
+    if (controlsTimerRef.current) window.clearTimeout(controlsTimerRef.current);
+    controlsTimerRef.current = window.setTimeout(() => setShowControls(false), 3000);
   };
 
   const liveVideosRef = useRef<MediaFile[]>([]);
@@ -197,19 +206,19 @@ const ListenerView: React.FC<ListenerViewProps> = ({
   useEffect(() => {
     const live = sponsoredVideos.filter(v => v.isLive);
     liveVideosRef.current = live;
-    // Only start rotation timer if there are multiple items
     if (live.length > 1) {
       if (timerRef.current) window.clearTimeout(timerRef.current);
       timerRef.current = window.setTimeout(nextAd, 20000);
     }
-    return () => {
-      if (timerRef.current) window.clearTimeout(timerRef.current);
-    };
+    return () => { if (timerRef.current) window.clearTimeout(timerRef.current); };
   }, [adIndex, sponsoredVideos, nextAd]);
 
   useEffect(() => {
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => setLocation(`Node: ${pos.coords.latitude.toFixed(1)}, ${pos.coords.longitude.toFixed(1)}`), () => setLocation('Global Diaspora'));
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setLocation(`Node: ${pos.coords.latitude.toFixed(1)}, ${pos.coords.longitude.toFixed(1)}`),
+        () => setLocation('Global Diaspora')
+      );
     }
     const timer = setInterval(() => setLocalTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), 1000);
     return () => clearInterval(timer);
@@ -217,7 +226,7 @@ const ListenerView: React.FC<ListenerViewProps> = ({
 
   const handleShare = async () => {
     const text = "📻 Tune in to Nigeria Diaspora Radio (NDR)! The voice of Nigerians abroad. Live news and culture. Listen here: ";
-    const url = window.location.href.split('?')[0]; 
+    const url = window.location.href.split('?')[0];
     try {
       if (navigator.share) {
         await navigator.share({ title: 'Nigeria Diaspora Radio', text, url });
@@ -226,148 +235,138 @@ const ListenerView: React.FC<ListenerViewProps> = ({
         await navigator.clipboard.writeText(`${text}${url}`);
         setShareFeedback('Link Copied!');
       }
-    } catch (err) {
-      console.warn("Share failed", err);
-    } finally {
-      setTimeout(() => setShareFeedback(''), 3000);
-    }
+    } catch {}
+    finally { setTimeout(() => setShareFeedback(''), 3000); }
   };
 
   const handleReport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reportText.trim()) return;
-    await dbService.addReport({ 
-      id: Math.random().toString(36).substring(2, 9), 
-      reporterName: 'Listener', 
-      location, 
-      content: reportText, 
-      timestamp: Date.now() 
+    await dbService.addReport({
+      id: Math.random().toString(36).substring(2, 9),
+      reporterName: 'Listener', location, content: reportText, timestamp: Date.now()
     });
-    setReportText(''); 
-    setIsReporting(false);
+    setReportText(''); setIsReporting(false);
     setShareFeedback('Report Sent!');
     setTimeout(() => setShareFeedback(''), 3000);
   };
 
   const liveVideos = useMemo(() => sponsoredVideos.filter(v => v.isLive), [sponsoredVideos]);
-  const adPool = liveVideos;
-  const currentAd = useMemo(() => adPool.length > 0 ? adPool[adIndex % adPool.length] : null, [adPool, adIndex]);
+  const currentAd = useMemo(() => liveVideos.length > 0 ? liveVideos[adIndex % liveVideos.length] : null, [liveVideos, adIndex]);
+
+  // Build ticker content once — stable string, no re-render on news update
+  const tickerContent = useMemo(() => {
+    const msgs = adminMessages.map(m => `📢 ${m.text}`);
+    const headlines = news.slice(0, 10).map(n => `● ${n.title}`);
+    return [...msgs, ...headlines].join('   ◆   ');
+  }, [adminMessages.length, news.length]); // only rebuild when count changes
 
   return (
     <div className="flex flex-col space-y-4 pb-8 px-1 text-[#008751] animate-scale-in">
-      {/* 1. STATUS BAR */}
+      {/* STATUS BAR */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-green-100 shadow-sm relative overflow-hidden">
         <div className="flex flex-col z-10">
           <span className="text-[6px] font-black uppercase tracking-widest text-green-600">{location}</span>
           <span className="text-[6px] font-mono text-green-900 font-black">{localTime}</span>
         </div>
-        
-        <button 
-          onClick={handleShare} 
-          className="relative z-10 bg-[#008751] hover:bg-green-700 text-white px-4 py-1.5 rounded-full text-[7px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all flex items-center space-x-2"
-        >
+        <button onClick={handleShare}
+          className="relative z-10 bg-[#008751] hover:bg-green-700 text-white px-4 py-1.5 rounded-full text-[7px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all flex items-center space-x-2">
           <i className="fas fa-paper-plane"></i>
           <span>{shareFeedback || 'Invite Friends'}</span>
         </button>
         <div className="absolute top-0 right-0 w-16 h-16 bg-green-50/50 rounded-full -mr-8 -mt-8"></div>
       </div>
 
-      {/* NDR TV — LIVE MONITOR */}
-      <section className="space-y-0">
-        {/* NDR TV Monitor */}
-        <div className="bg-black overflow-hidden shadow-2xl" style={{ borderRadius: 0 }}>
+      {/* NDR TV — FULL OVERLAY LAYOUT */}
+      <section>
+        <div className="bg-black overflow-hidden shadow-2xl relative" style={{ borderRadius: 0 }}>
 
-          {/* ── TOP BAR: NDRtv + LIVE dot ── */}
-          <div className="bg-gray-950 px-3 py-1.5 flex items-center justify-between border-b border-gray-800">
-            <span className="text-[11px] font-black tracking-tight flex items-center space-x-0.5">
-              <span className="text-[#008751]">N</span>
-              <span className="text-white">D</span>
-              <span className="text-[#008751]">R</span>
-              <span className="text-white">tv</span>
-            </span>
-            {currentAd ? (
-              <div className="flex items-center space-x-1">
-                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-                <span className="text-[6px] font-black text-red-400 uppercase tracking-widest">Live</span>
-              </div>
-            ) : (
-              <span className="text-[6px] font-black text-gray-600 uppercase tracking-widest">Off Air</span>
-            )}
-          </div>
-
-          {/* ── SCREEN ── */}
-          <div className="relative bg-black" style={{ height: '276px' }}>
+          {/* ── VIDEO SCREEN — fills everything ── */}
+          <div
+            className="relative bg-black w-full"
+            style={{ aspectRatio: '16/9', minHeight: '200px' }}
+            onClick={handleTvTap}
+          >
+            {/* Video player */}
             <TvScreen currentAd={currentAd} tvAudioOn={tvAudioOn} isRadioPlaying={isRadioPlaying} nextAd={nextAd} />
-          </div>
 
-          {/* ── BOTTOM CONTROLS ── */}
-          <div className="bg-gray-950 border-t border-gray-800 px-3 py-2 space-y-2">
-            {/* Play / Pause / Stop + Volume + Expand */}
-            <div className="flex items-center justify-between">
-              {/* Left: play controls */}
-              <div className="flex items-center space-x-2">
-                {/* Play/Pause */}
-                <button
-                  onClick={handleTvAudioToggle}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-white transition-all active:scale-90 ${tvAudioOn ? 'bg-red-600' : 'bg-gray-700 hover:bg-gray-600'}`}>
-                  <i className={`fas ${tvAudioOn ? 'fa-pause' : 'fa-play'} text-[9px] ${!tvAudioOn ? 'ml-0.5' : ''}`}></i>
-                </button>
-                {/* Stop */}
-                <button
-                  onClick={() => { setTvAudioOn(false); }}
-                  className="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center text-white transition-all active:scale-90">
-                  <i className="fas fa-stop text-[9px]"></i>
-                </button>
-                {/* Volume */}
+            {/* ── TOP OVERLAY: channel name + live dot ── */}
+            <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 py-2 bg-gradient-to-b from-black/70 to-transparent pointer-events-none z-10">
+              <span className="text-[11px] font-black tracking-tight flex items-center space-x-0.5">
+                <span className="text-[#008751]">N</span>
+                <span className="text-white">D</span>
+                <span className="text-[#008751]">R</span>
+                <span className="text-white">tv</span>
+                {currentAd && <span className="ml-2 text-[7px] font-black text-white/70 uppercase">{currentAd.name}</span>}
+              </span>
+              {currentAd ? (
                 <div className="flex items-center space-x-1">
-                  <i className={`fas ${tvVolume === 0 ? 'fa-volume-mute' : 'fa-volume-up'} text-gray-400 text-[8px]`}></i>
-                  <input
-                    type="range" min="0" max="1" step="0.05" value={tvVolume}
-                    onChange={e => setTvVolume(parseFloat(e.target.value))}
-                    className="w-16 h-0.5 accent-red-500 cursor-pointer"
-                  />
+                  <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                  <span className="text-[6px] font-black text-red-400 uppercase tracking-widest">Live</span>
                 </div>
-              </div>
-              {/* Right: expand */}
-              {currentAd && (
-                <button
-                  onClick={() => {
-                    const el = document.getElementById('ndr-tv-screen');
-                    if (el?.requestFullscreen) el.requestFullscreen();
-                  }}
-                  className="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center text-white transition-all active:scale-90">
-                  <i className="fas fa-expand text-[9px]"></i>
-                </button>
+              ) : (
+                <span className="text-[6px] font-black text-gray-400 uppercase tracking-widest">Off Air</span>
               )}
             </div>
 
-            {/* Red scrolling ticker */}
-            <div className="bg-red-600 flex items-center overflow-hidden rounded-sm" style={{ height: '20px' }}>
-              <div className="shrink-0 flex h-full border-r border-red-700" style={{ width: '24px' }}>
-                <div className="flex-1 bg-[#008751]"></div>
-                <div className="flex-1 bg-white"></div>
-                <div className="flex-1 bg-[#008751]"></div>
-              </div>
-              <div className="flex-1 overflow-hidden h-full flex items-center">
-                <div className="flex whitespace-nowrap animate-tv-ticker items-center">
-                  <span className="text-[7px] font-black text-white uppercase tracking-widest px-4">{APP_NAME} — {CHANNEL_INTRO}</span>
-                  {adminMessages.map((msg, i) => (
-                    <span key={`tv-admin-${i}`} className="text-[7px] text-yellow-200 font-black uppercase px-4 flex items-center">
-                      <i className="fas fa-bullhorn mr-1"></i>{msg.text}
-                      <span className="ml-4 text-red-300">◆</span>
-                    </span>
-                  ))}
-                  {news.map((n, i) => (
-                    <span key={`tv-news-${i}`} className="text-[7px] text-white font-bold uppercase px-4 flex items-center">
-                      <span className="w-1.5 h-1.5 bg-yellow-300 rounded-full mr-2 shrink-0"></span>
-                      {n.title}
-                      <span className="ml-4 text-red-300">◆</span>
-                    </span>
-                  ))}
-                  <span className="text-[7px] font-black text-white uppercase tracking-widest px-4">{APP_NAME} — {CHANNEL_INTRO}</span>
+            {/* ── BOTTOM OVERLAY: ticker + controls ── */}
+            <div className="absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/80 to-transparent">
+
+              {/* Controls — tap to show/hide */}
+              <div className={`flex items-center justify-between px-3 py-2 transition-all duration-300 ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
+                <div className="flex items-center space-x-2">
+                  <button onClick={handleTvAudioToggle}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-white transition-all active:scale-90 ${tvAudioOn ? 'bg-red-600' : 'bg-white/20 hover:bg-white/30'}`}>
+                    <i className={`fas ${tvAudioOn ? 'fa-volume-up' : 'fa-volume-mute'} text-[9px]`}></i>
+                  </button>
+                  <button onClick={() => { setTvAudioOn(false); }}
+                    className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-all active:scale-90">
+                    <i className="fas fa-stop text-[9px]"></i>
+                  </button>
+                  <input type="range" min="0" max="1" step="0.05" value={tvVolume}
+                    onChange={e => setTvVolume(parseFloat(e.target.value))}
+                    className="w-16 h-0.5 accent-red-500 cursor-pointer" />
                 </div>
+                <button
+                  onClick={() => {
+                    const el = document.querySelector('[data-tv-screen]') as HTMLElement;
+                    if (el?.requestFullscreen) el.requestFullscreen();
+                  }}
+                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-all active:scale-90">
+                  <i className="fas fa-expand text-[9px]"></i>
+                </button>
               </div>
+
+              {/* Ticker — always visible at bottom */}
+              {tickerContent && (
+                <div className="bg-red-600/90 flex items-center overflow-hidden" style={{ height: '20px' }}>
+                  <div className="shrink-0 flex h-full border-r border-red-700" style={{ width: '24px' }}>
+                    <div className="flex-1 bg-[#008751]"></div>
+                    <div className="flex-1 bg-white"></div>
+                    <div className="flex-1 bg-[#008751]"></div>
+                  </div>
+                  <div className="flex-1 overflow-hidden h-full flex items-center">
+                    <div className="ndr-ticker whitespace-nowrap flex items-center">
+                      <span className="text-[7px] font-black text-white uppercase tracking-widest px-4">
+                        {tickerContent}
+                        &nbsp;&nbsp;&nbsp;◆&nbsp;&nbsp;&nbsp;
+                        {APP_NAME} — {CHANNEL_INTRO}
+                        &nbsp;&nbsp;&nbsp;◆&nbsp;&nbsp;&nbsp;
+                        {tickerContent}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* Off air screen */}
+            {!currentAd && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950 space-y-2 pointer-events-none">
+                <span className="text-3xl font-black text-gray-800">NDRtv</span>
+                <span className="text-[7px] font-black text-gray-700 uppercase tracking-widest">Off Air</span>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -501,8 +500,8 @@ const ListenerView: React.FC<ListenerViewProps> = ({
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
         .animate-marquee { display: inline-flex; animation: marquee 120s linear infinite; }
-        @keyframes tv-ticker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .animate-tv-ticker { display: inline-flex; animation: tv-ticker 60s linear infinite; }
+        @keyframes ndr-ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+        .ndr-ticker { display: inline-block; animation: ndr-ticker-scroll 40s linear infinite; will-change: transform; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />
