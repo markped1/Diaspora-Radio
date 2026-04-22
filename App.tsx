@@ -249,8 +249,11 @@ const App: React.FC = () => {
   }, [fetchData, refreshNews]);
 
   useEffect(() => {
-    // ── LISTENER SYNC: runs once on mount, then every 5s ──────────────────    // Completely separate from fetchData — never touches audio while playing
+    // ── LISTENER SYNC: runs once on mount, then every 5s ──────────────────
+    // Completely separate from fetchData — never touches audio while playing
     if (!hasApi()) return;
+
+    let hasInitialised = false; // only auto-start on first sync
 
     const syncLiveState = async () => {
       try {
@@ -258,26 +261,33 @@ const App: React.FC = () => {
         if (roleRef.current !== UserRole.LISTENER) return;
 
         if (live.track?.url?.startsWith('http')) {
-          // Only update if URL changed AND listener isn't mid-track
           if (activeTrackUrlRef.current !== live.track.url) {
             setActiveTrackUrl(live.track.url);
             setCurrentTrackName(live.track.name || '');
             dbService.setLiveStreamUrl(live.track.url);
           }
-          setIsRadioPlaying(true);
+          // Only auto-start on first sync — after that respect user's pause
+          if (!hasInitialised) {
+            setIsRadioPlaying(true);
+          }
         } else if (live.stream?.startsWith('http')) {
           if (activeTrackUrlRef.current !== live.stream) {
             setActiveTrackUrl(live.stream);
             setCurrentTrackName('Live Stream');
             dbService.setLiveStreamUrl(live.stream);
           }
-          setIsRadioPlaying(true);
+          if (!hasInitialised) {
+            setIsRadioPlaying(true);
+          }
         } else if (live.track === null && !live.stream?.startsWith('http')) {
+          // Admin explicitly stopped — stop listener
           setActiveTrackUrl(null);
           setCurrentTrackName('');
           setIsRadioPlaying(false);
           dbService.setLiveStreamUrl('');
         }
+
+        hasInitialised = true;
 
         if (live.messages?.length) setAdminMessages(live.messages);
 
