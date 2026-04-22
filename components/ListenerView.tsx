@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import SponsoredVideo from './SponsoredVideo';
 import IptvPlayer from './IptvPlayer';
 import { NewsItem, MediaFile, AdminMessage, ListenerReport } from '../types';
@@ -116,8 +116,7 @@ const ListenerView: React.FC<ListenerViewProps> = ({
     setTimeout(() => setShareFeedback(''), 3000);
   };
 
-  const liveVideos = sponsoredVideos.filter(v => v.isLive);
-  // Only show items explicitly pushed live — never fall back to all items
+  const liveVideos = useMemo(() => sponsoredVideos.filter(v => v.isLive), [sponsoredVideos]);
   const adPool = liveVideos;
   const currentAd = adPool.length > 0 ? adPool[adIndex % adPool.length] : null;
 
@@ -170,8 +169,8 @@ const ListenerView: React.FC<ListenerViewProps> = ({
                   <IptvPlayer url={currentAd.url} muted={!tvAudioOn} autoPlay className="w-full h-full object-contain" />
                 ) : currentAd.type === 'youtube' && currentAd.url.includes('youtube.com/embed') ? (
                   <iframe
-                    key={`${currentAd.id}-${tvAudioOn}`}
-                    src={tvAudioOn ? currentAd.url : currentAd.url.includes('?') ? currentAd.url + '&mute=1' : currentAd.url + '?mute=1'}
+                    key={currentAd.id}
+                    src={currentAd.url.includes('?') ? currentAd.url + '&mute=0' : currentAd.url + '?mute=0'}
                     className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen title={currentAd.name}
                   />
