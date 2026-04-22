@@ -38,8 +38,12 @@ const App: React.FC = () => {
   const lastBroadcastMarkerRef = useRef<string>("");
   const wasPlayingBeforeBroadcastRef = useRef(false);
 
-  const mediaUrlCache = useRef<Map<string, string>>(new Map());
+  const activeTrackIdRef = useRef<string | null>(null);
+  useEffect(() => { activeTrackIdRef.current = activeTrackId; }, [activeTrackId]);
+  const activeTrackUrlRef = useRef<string | null>(null);
+  useEffect(() => { activeTrackUrlRef.current = activeTrackUrl; }, [activeTrackUrl]);
   const playlistRef = useRef<MediaFile[]>([]);
+  const mediaUrlCache = useRef<Map<string, string>>(new Map());
 
   // Register Web Speech ducking callbacks once on mount
   useEffect(() => {
@@ -95,8 +99,8 @@ const App: React.FC = () => {
       setAdminMessages(msg || []);
       setReports(rep || []);
 
-      if (activeTrackId) {
-        const activeTrack = processedMedia.find(t => t.id === activeTrackId);
+      if (activeTrackIdRef.current) {
+        const activeTrack = processedMedia.find(t => t.id === activeTrackIdRef.current);
         if (activeTrack) setActiveTrackUrl(activeTrack.url);
       }
 
@@ -108,25 +112,30 @@ const App: React.FC = () => {
           // Sync cloud state to LISTENERS only — Admin is the source of truth
           if (roleRef.current === UserRole.LISTENER) {
             if (live.track?.url?.startsWith('http')) {
-              // Admin is playing — push URL and auto-start on listener
-              setActiveTrackUrl(live.track.url);
-              setCurrentTrackName(live.track.name || '');
+              // Admin is playing a track — sync URL and auto-start
+              if (activeTrackUrlRef.current !== live.track.url) {
+                setActiveTrackUrl(live.track.url);
+                setCurrentTrackName(live.track.name || '');
+              }
               setIsRadioPlaying(true);
             } else if (live.stream?.startsWith('http')) {
-              // Admin set a stream URL — push and auto-start
-              setActiveTrackUrl(live.stream);
-              setCurrentTrackName('Live Stream');
+              // Admin set a live stream URL — sync and auto-start
+              if (activeTrackUrlRef.current !== live.stream) {
+                setActiveTrackUrl(live.stream);
+                setCurrentTrackName('Live Stream');
+                dbService.setLiveStreamUrl(live.stream);
+              }
               setIsRadioPlaying(true);
-              dbService.setLiveStreamUrl(live.stream);
-            } else if (live.track === null && !live.stream) {
-              // Admin explicitly stopped — stop listener too
+            } else if (live.track === null && !live.stream?.startsWith('http')) {
+              // Admin explicitly stopped — only stop if we were synced to admin
+              // Don't stop if listener is playing their own local track
               setActiveTrackUrl(null);
               setCurrentTrackName('');
               setIsRadioPlaying(false);
             }
           }
           // Always persist stream URL locally for offline fallback
-          if (live.stream) {
+          if (live.stream?.startsWith('http')) {
             dbService.setLiveStreamUrl(live.stream);
           }
           if (live.messages?.length) setAdminMessages(live.messages);
@@ -173,7 +182,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error("Data fetch error", err);
     }
-  }, [activeTrackId]);
+  }, []); // stable — uses refs, no stale closure
 
   // Fetch fresh news from RSS and dump into newsroom + state
   const refreshNews = useCallback(async () => {
