@@ -4,6 +4,8 @@ import { dbService } from '../services/dbService';
 import { AdminLog, MediaFile, NewsItem, ListenerReport, SportChannel } from '../types';
 import TvMonitor from './TvMonitor';
 import SportsTv from './SportsTv';
+import GenreManager from './GenreManager';
+import AnalyticsDashboard from './AnalyticsDashboard';
 import { getSharedMedia, hasApi, addMediaToCloud, setSharedStreamUrl, deleteSharedMedia, setLiveTrack, setLiveTv, setLiveStream } from '../services/apiService';
 
 // ── Quick Stream Box — paste any URL and push instantly to TV ─────────────────
@@ -86,7 +88,7 @@ interface AdminViewProps {
   onPlayStream?: (url: string) => void;
 }
 
-type Tab = 'command' | 'bulletin' | 'tv' | 'sports' | 'media' | 'inbox' | 'logs';
+type Tab = 'command' | 'bulletin' | 'tv' | 'sports' | 'media' | 'genres' | 'analytics' | 'inbox' | 'logs';
 type MediaSubTab = 'audio' | 'video' | 'ads';
 
 const AdminView: React.FC<AdminViewProps> = ({ 
@@ -376,9 +378,9 @@ const AdminView: React.FC<AdminViewProps> = ({
 
       <div className="flex items-center space-x-1.5 px-0.5">
         <div className="flex-grow flex space-x-1 bg-[#008751]/10 p-1 rounded-xl border border-green-200 shadow-sm overflow-x-auto no-scrollbar">
-          {(['command', 'bulletin', 'tv', 'sports', 'media', 'inbox', 'logs'] as Tab[]).map(t => (
+          {(['command', 'bulletin', 'tv', 'sports', 'media', 'genres', 'analytics', 'inbox', 'logs'] as Tab[]).map(t => (
             <button key={t} onClick={() => setActiveTab(t)} className={`flex-1 min-w-[44px] py-2 text-[7px] font-black uppercase tracking-widest rounded-lg transition-all relative ${activeTab === t ? 'bg-[#008751] text-white shadow-md' : 'text-green-950/50 hover:text-green-950'}`}>
-              {t === 'bulletin' ? 'News' : t === 'tv' ? 'TV' : t === 'sports' ? '⚽' : t}
+              {t === 'bulletin' ? 'News' : t === 'tv' ? 'TV' : t === 'sports' ? '⚽' : t === 'genres' ? '🎵' : t === 'analytics' ? '📊' : t}
               {t === 'inbox' && reports.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[6px] w-3 h-3 rounded-full flex items-center justify-center border border-white animate-bounce">{reports.length}</span>}
             </button>
           ))}
@@ -861,6 +863,21 @@ const AdminView: React.FC<AdminViewProps> = ({
         </div>
       )}
       
+      {activeTab === 'genres' && (
+        <GenreManager
+          allTracks={[...cloudMedia.filter(m => m.type === 'audio'), ...mediaList.filter(m => m.type === 'audio')]}
+          onPlayGenre={(tracks) => {
+            if (tracks.length > 0) {
+              onPlayTrack(tracks[Math.floor(Math.random() * tracks.length)]);
+            }
+          }}
+        />
+      )}
+
+      {activeTab === 'analytics' && (
+        <AnalyticsDashboard />
+      )}
+
       {activeTab === 'logs' && (
         <div className="bg-white rounded-xl border border-green-50 p-2 max-h-[300px] overflow-y-auto font-mono text-[7px]">
           {logs.map(log => (

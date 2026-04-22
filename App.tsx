@@ -10,6 +10,7 @@ import { getDetailedBulletinAudio, getNewsAudio, getJingleAudio, registerSpeechC
 import { UserRole, MediaFile, AdminMessage, AdminLog, NewsItem, ListenerReport } from './types';
 import { DESIGNER_NAME, APP_NAME, JINGLE_1, JINGLE_2 } from './constants';
 import { getSharedMedia, getLiveState, setLiveTrack, hasApi } from './services/apiService';
+import { registerSession, updateSession } from './services/analyticsService';
 
 const App: React.FC = () => {
   const [role, setRole] = useState<UserRole>(UserRole.LISTENER);
@@ -239,6 +240,16 @@ const App: React.FC = () => {
 
     return () => clearInterval(heartbeat);
   }, [runScheduledBroadcast]);
+
+  // Register listener session and send heartbeat every 60s
+  useEffect(() => {
+    if (role !== UserRole.LISTENER) return;
+    registerSession(false);
+    const heartbeat = setInterval(() => {
+      updateSession(false); // isWatching updated separately
+    }, 60000);
+    return () => clearInterval(heartbeat);
+  }, [role]);
 
   useEffect(() => {
     fetchData();
