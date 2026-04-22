@@ -252,7 +252,17 @@ const ListenerView: React.FC<ListenerViewProps> = ({
   };
 
   const liveVideos = useMemo(() => sponsoredVideos.filter(v => v.isLive), [sponsoredVideos]);
-  const currentAd = useMemo(() => liveVideos.length > 0 ? liveVideos[adIndex % liveVideos.length] : null, [liveVideos, adIndex]);
+
+  // Stabilise currentAd — only update when URL changes, not on every object reference change
+  const currentAdRef = useRef<MediaFile | null>(null);
+  const currentAd = useMemo(() => {
+    const candidate = liveVideos.length > 0 ? liveVideos[adIndex % liveVideos.length] : null;
+    // Only update ref if URL actually changed — prevents TvScreen remount on poll
+    if (candidate?.url !== currentAdRef.current?.url) {
+      currentAdRef.current = candidate;
+    }
+    return currentAdRef.current;
+  }, [liveVideos, adIndex]);
 
   // Build ticker content once — stable string, no re-render on news update
   const tickerContent = useMemo(() => {
@@ -501,7 +511,7 @@ const ListenerView: React.FC<ListenerViewProps> = ({
         @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
         .animate-marquee { display: inline-flex; animation: marquee 120s linear infinite; }
         @keyframes ndr-ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .ndr-ticker { display: inline-block; animation: ndr-ticker-scroll 40s linear infinite; will-change: transform; }
+        .ndr-ticker { display: inline-block; animation: ndr-ticker-scroll 42s linear infinite; will-change: transform; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />
