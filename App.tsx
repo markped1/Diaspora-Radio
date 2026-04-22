@@ -287,6 +287,31 @@ const App: React.FC = () => {
   }, [runScheduledBroadcast]);
 
   useEffect(() => {
+    // On mount: immediately pre-load whatever URL we can find so the player
+    // is ready before the user taps — no waiting for fetchData to complete
+    const preloadUrl = async () => {
+      // 1. Check localStorage first (instant, no network)
+      const saved = dbService.getLiveStreamUrl();
+      if (saved) {
+        setActiveTrackUrl(saved);
+        setCurrentTrackName('Live Stream');
+        return;
+      }
+      // 2. If Supabase is configured, fetch live state immediately
+      if (hasApi()) {
+        try {
+          const live = await getLiveState();
+          const url = live?.track?.url || live?.stream;
+          if (url?.startsWith('http')) {
+            setActiveTrackUrl(url);
+            setCurrentTrackName(live?.track?.name || 'Live Stream');
+            dbService.setLiveStreamUrl(url);
+          }
+        } catch { /* silent — fetchData will retry */ }
+      }
+    };
+    preloadUrl();
+
     fetchData();
     refreshNews();
 

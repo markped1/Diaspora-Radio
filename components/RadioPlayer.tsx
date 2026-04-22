@@ -26,6 +26,7 @@ import {
   stopBroadcast,
   setBroadcastVolume,
 } from '../services/aiDjService';
+import { dbService } from '../services/dbService';
 
 interface RadioPlayerProps {
   onStateChange: (playing: boolean) => void;
@@ -285,11 +286,31 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       return;
     }
 
-    // If no URL is loaded at all, show a clear message — do NOT do async here
-    if (!loadedUrl.current) {
+    // Resolve the best available URL — all synchronous (localStorage is sync)
+    const url = loadedUrl.current || activeTrackUrl || dbService.getLiveStreamUrl() || null;
+
+    if (!url) {
       setError('No stream available — admin needs to start playing');
       setTimeout(() => setError(''), 5000);
       return;
+    }
+
+    // If we have a URL that isn't loaded yet, load it now
+    if (loadedUrl.current !== url) {
+      loadedUrl.current = url;
+      hlsRef.current?.destroy();
+      hlsRef.current = null;
+      if (isHlsUrl(url) && Hls.isSupported()) {
+        const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+        hlsRef.current = hls;
+        audio.removeAttribute('crossorigin');
+        hls.loadSource(url);
+        hls.attachMedia(audio);
+      } else {
+        applyCrossOrigin(audio, url);
+        audio.src = url;
+        audio.load();
+      }
     }
 
     // Synchronous play() — required for iOS/Android gesture compliance
