@@ -24,6 +24,7 @@ interface AdminViewProps {
   onPlayJingle?: (index: 1 | 2) => Promise<void>;
   news?: NewsItem[];
   onTriggerFullBulletin?: () => Promise<void>;
+  onPlayStream?: (url: string) => void;
 }
 
 type Tab = 'command' | 'bulletin' | 'tv' | 'sports' | 'media' | 'inbox' | 'logs';
@@ -45,7 +46,8 @@ const AdminView: React.FC<AdminViewProps> = ({
   onPushBroadcast,
   onPlayJingle,
   news = [],
-  onTriggerFullBulletin
+  onTriggerFullBulletin,
+  onPlayStream,
 }) => {
   const [activeTab, setActiveTab] = useState<Tab>('command');
   const [mediaSubTab, setMediaSubTab] = useState<MediaSubTab>('audio');
@@ -369,12 +371,13 @@ const AdminView: React.FC<AdminViewProps> = ({
                   const url = liveStreamUrl.trim();
                   dbService.setLiveStreamUrl(url);
                   if (hasApi()) setSharedStreamUrl(url).catch(() => {});
-                  setStatusMsg('✅ Stream URL saved — listeners will hear this when they tap play');
+                  if (url && !isRadioPlaying) onPlayStream?.(url);
+                  setStatusMsg(url ? '✅ Stream URL saved — playing now' : '✅ Stream URL cleared');
                   setTimeout(() => setStatusMsg(''), 3000);
                 }}
                 className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-[7px] font-black uppercase"
               >
-                Save Stream URL
+                Save & Play Stream
               </button>
               {liveStreamUrl && (
                 <button

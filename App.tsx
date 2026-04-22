@@ -328,6 +328,15 @@ const App: React.FC = () => {
   const handlePlayAll = () => {
     setHasInteracted(true);
     if (audioPlaylist.length === 0) {
+      // Fall back to live stream URL if no tracks uploaded
+      const streamUrl = dbService.getLiveStreamUrl();
+      if (streamUrl) {
+        setActiveTrackId('live-stream');
+        setActiveTrackUrl(streamUrl);
+        setCurrentTrackName('Live Stream');
+        setIsRadioPlaying(true);
+        if (hasApi()) setLiveTrack({ url: streamUrl, name: 'Live Stream' }).catch(() => {});
+      }
       return;
     }
     // Use all tracks — cloud first, then local blobs
@@ -446,6 +455,13 @@ const App: React.FC = () => {
             onPushBroadcast={handlePushBroadcast} onPlayJingle={handlePlayJingle}
             news={news} onTriggerFullBulletin={() => runScheduledBroadcast(false)}
             onRefreshNews={refreshNews}
+            onPlayStream={(url) => {
+              setActiveTrackId('live-stream');
+              setActiveTrackUrl(url);
+              setCurrentTrackName('Live Stream');
+              setIsRadioPlaying(true);
+              if (hasApi()) setLiveTrack({ url, name: 'Live Stream' }).catch(() => {});
+            }}
           />
         )}
       </main>
