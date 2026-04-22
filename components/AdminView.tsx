@@ -4,7 +4,7 @@ import { dbService } from '../services/dbService';
 import { AdminLog, MediaFile, NewsItem, ListenerReport, SportChannel } from '../types';
 import TvMonitor from './TvMonitor';
 import SportsTv from './SportsTv';
-import { getSharedMedia, hasApi, addMediaToCloud, setSharedStreamUrl, deleteSharedMedia } from '../services/apiService';
+import { getSharedMedia, hasApi, addMediaToCloud, setSharedStreamUrl, deleteSharedMedia, setLiveTrack, setLiveTv, setLiveStream } from '../services/apiService';
 
 interface AdminViewProps {
   onRefreshData: () => void;
@@ -347,6 +347,32 @@ const AdminView: React.FC<AdminViewProps> = ({
             </button>
             <div className="bg-green-50 py-2.5 px-5 rounded-2xl border border-green-100 inline-block shadow-inner"><span className="text-[8px] font-black text-green-700 uppercase block tracking-widest truncate max-w-[200px]">{currentTrackName}</span></div>
           </div>
+
+          {/* ── KILL ALL — stop every playing instance globally ── */}
+          <button
+            onClick={async () => {
+              if (!confirm('Kill ALL playing instances? This stops radio and TV for every listener worldwide.')) return;
+              // Stop locally
+              if (isRadioPlaying) onToggleRadio();
+              // Wipe Supabase state completely
+              if (hasApi()) {
+                await Promise.all([
+                  setLiveTrack(null),
+                  setLiveTv(null),
+                  setLiveStream(''),
+                ]).catch(() => {});
+              }
+              // Clear local stream URL
+              dbService.setLiveStreamUrl('');
+              setLiveStreamUrlState('');
+              setStatusMsg('🛑 All instances killed — radio and TV stopped globally');
+              setTimeout(() => setStatusMsg(''), 4000);
+            }}
+            className="w-full bg-red-900 text-white py-3 rounded-2xl flex items-center justify-center space-x-2 shadow-lg active:scale-95 transition-all border border-red-800"
+          >
+            <i className="fas fa-skull-crossbones text-sm"></i>
+            <span className="text-[8px] font-black uppercase tracking-widest">Kill All Instances</span>
+          </button>
 
           {/* ── LIVE STREAM URL — what all listeners hear ── */}
           <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-sm space-y-2">
