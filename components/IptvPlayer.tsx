@@ -23,7 +23,17 @@ interface IptvPlayerProps {
 const PROXY_URL = import.meta.env.VITE_PROXY_URL || '';
 function proxyUrl(url: string): string {
   if (!PROXY_URL) return url;
+  // Don't double-proxy
+  if (url.includes(PROXY_URL)) return url;
   return `${PROXY_URL}?url=${encodeURIComponent(url)}`;
+}
+
+// Use proxy for all external streams — direct only for blob/data URLs
+function resolveStreamUrl(url: string): string {
+  if (!url) return url;
+  if (url.startsWith('blob:') || url.startsWith('data:')) return url;
+  if (url.startsWith('https://res.cloudinary.com')) return url; // Cloudinary has CORS
+  return proxyUrl(url);
 }
 
 const IptvPlayer: React.FC<IptvPlayerProps> = ({
@@ -85,14 +95,15 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              // First fatal network error — retry with proxy if not already tried
-              if (!retriedWithProxy.current && PROXY_URL && !streamUrl.includes(PROXY_URL)) {
+              // Retry once on transient network drop
+              if (!retriedWithProxy.current) {
                 retriedWithProxy.current = true;
-                hls.destroy();
-                hlsRef.current = null;
-                loadStream(proxyUrl(url), video);
-              } else {
                 hls.startLoad();
+              } else {
+                setStatus('error');
+                setErrorMsg('Stream unavailable');
+                hls.destroy();
+                onError?.();
               }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
@@ -135,7 +146,8 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
     setErrorMsg('');
     retriedWithProxy.current = false;
 
-    loadStream(url, video);
+    // Always route through proxy for external streams
+    loadStream(resolveStreamUrl(url), video);
 
     return () => {
       if (hlsRef.current) {
