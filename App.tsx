@@ -108,16 +108,18 @@ const App: React.FC = () => {
           // Sync cloud state to LISTENERS only — Admin is the source of truth
           if (roleRef.current === UserRole.LISTENER) {
             if (live.track?.url?.startsWith('http')) {
-              // Admin is playing a track — pre-load it so listener can tap play
+              // Admin is playing — push URL and auto-start on listener
               setActiveTrackUrl(live.track.url);
               setCurrentTrackName(live.track.name || '');
+              setIsRadioPlaying(true);
             } else if (live.stream?.startsWith('http')) {
-              // Admin set a stream URL — pre-load it for listener
+              // Admin set a stream URL — push and auto-start
               setActiveTrackUrl(live.stream);
               setCurrentTrackName('Live Stream');
+              setIsRadioPlaying(true);
               dbService.setLiveStreamUrl(live.stream);
             } else if (live.track === null && !live.stream) {
-              // Admin explicitly stopped everything
+              // Admin explicitly stopped — stop listener too
               setActiveTrackUrl(null);
               setCurrentTrackName('');
               setIsRadioPlaying(false);
@@ -318,8 +320,8 @@ const App: React.FC = () => {
     const interactionHandler = () => setHasInteracted(true);
     window.addEventListener('click', interactionHandler, { once: true });
 
-    // Poll cloud state every 10 seconds so listeners stay in sync with admin
-    const syncInterval = hasApi() ? setInterval(() => fetchData(), 10000) : null;
+    // Poll cloud state every 3 seconds so listeners stay in sync with admin
+    const syncInterval = hasApi() ? setInterval(() => fetchData(), 3000) : null;
 
     return () => {
       window.removeEventListener('click', interactionHandler);

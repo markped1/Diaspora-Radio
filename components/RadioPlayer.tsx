@@ -87,8 +87,6 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   const onEndedRef = useRef(onTrackEnded);
   const volRef     = useRef(1);
   const retryRef   = useRef(false);
-  // Track whether a play() was attempted so forcePlaying can trigger it
-  const pendingPlayRef = useRef(false);
 
   useEffect(() => { onEndedRef.current = onTrackEnded; }, [onTrackEnded]);
   useEffect(() => { volRef.current = volume; }, [volume]);
@@ -204,10 +202,24 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
           else { setError('Stream error'); setLoading(false); }
         }
       });
+      // Auto-play once HLS manifest is loaded, if forcePlaying is set
+      if (forcePlaying) {
+        hls.once(Hls.Events.MANIFEST_PARSED, () => {
+          audio.play().catch(() => {});
+        });
+      }
     } else {
       applyCrossOrigin(audio, activeTrackUrl);
       audio.src = activeTrackUrl;
       audio.load();
+      // Auto-play once enough data is buffered, if forcePlaying is set
+      if (forcePlaying) {
+        const onCanPlay = () => {
+          audio.removeEventListener('canplay', onCanPlay);
+          audio.play().catch(() => {});
+        };
+        audio.addEventListener('canplay', onCanPlay);
+      }
     }
 
     if ('mediaSession' in navigator) {
@@ -218,35 +230,16 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     }
   }, [activeTrackUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── forcePlaying: when admin pushes a track, attempt auto-play ───────────
-  // This handles the case where activeTrackUrl arrives AND forcePlaying=true
-  // simultaneously (admin tapped Go Live). We attempt play() here.
-  // On desktop/Android this works. On iOS it will be blocked (NotAllowedError)
-  // and the listener will see "Tap ▶ to play" — which is correct iOS behaviour.
+  // ── forcePlaying: pause/resume when flag changes without URL change ───────
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-
-    if (forcePlaying && activeTrackUrl && !playing) {
-      // Mark that we want to play — attempt it
-      pendingPlayRef.current = true;
-      setLoading(true);
-      audio.play().catch((err: DOMException) => {
-        setLoading(false);
-        pendingPlayRef.current = false;
-        if (err.name === 'NotAllowedError') {
-          // iOS/strict autoplay policy — user must tap
-          setError('Tap ▶ to play');
-          setTimeout(() => setError(''), 5000);
-        }
-        // AbortError = another play() interrupted this one — ignore
-      });
-    }
-
     if (!forcePlaying && !audio.paused) {
       audio.pause();
     }
-  }, [forcePlaying, activeTrackUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+    // play() on forcePlaying=true is handled inside the URL load effect above
+    // to avoid calling play() before the browser has buffered any data
+  }, [forcePlaying]);
 
   // ── Volume / ducking ─────────────────────────────────────────────────────
   useEffect(() => {
