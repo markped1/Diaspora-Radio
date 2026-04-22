@@ -176,6 +176,15 @@ export async function getNewsAudio(newsContent: string): Promise<Uint8Array | nu
 
 // ─── Jingle ───────────────────────────────────────────────────────────────────
 export async function getJingleAudio(jingleText: string): Promise<Uint8Array | null> {
-  await webSpeechSpeak(jingleText, { rate: 1.05, onStart: () => _onSpeechStart?.(), onEnd: () => _onSpeechEnd?.() });
+  // Slower, more human delivery — like a real radio station ID
+  // Add a natural pause before and after
+  await pause(300);
+  await webSpeechSpeak(jingleText, {
+    rate: 0.82,       // slower than normal speech — warm, deliberate
+    pitch: 0.95,      // slightly lower pitch — more authoritative
+    onStart: () => _onSpeechStart?.(),
+    onEnd: () => _onSpeechEnd?.(),
+  });
+  await pause(400);
   return new Uint8Array(1);
 }

@@ -162,6 +162,13 @@ const App: React.FC = () => {
       return;
     }
 
+    // Quiet hours: midnight to 6am — music only, no news
+    const hour = new Date().getHours();
+    if (hour >= 0 && hour < 6) {
+      console.log(`🌙 Quiet hours (${hour}:00) — skipping news broadcast, music only`);
+      return;
+    }
+
     if (isSyncingRef.current) return;
     isSyncingRef.current = true;
     try {

@@ -16,9 +16,37 @@ const RSS2JSON = 'https://api.rss2json.com/v1/api.json?rss_url=';
 
 // Only feeds confirmed working (no CORS block, returns items)
 const RSS_FEEDS = [
-  { url: 'https://premiumtimesng.com/feed',                    name: 'Premium Times'    },
-  { url: 'https://saharareporters.com/rss.xml',                name: 'Sahara Reporters' },
-  { url: 'https://feeds.bbci.co.uk/news/world/africa/rss.xml', name: 'BBC Africa'       },
+  // ── Nigerian sources ──────────────────────────────────────────────────────
+  { url: 'https://premiumtimesng.com/feed',                          name: 'Premium Times'       },
+  { url: 'https://saharareporters.com/rss.xml',                      name: 'Sahara Reporters'    },
+  { url: 'https://punchng.com/feed/',                                name: 'Punch Nigeria'       },
+  { url: 'https://guardian.ng/feed/',                                name: 'Guardian Nigeria'    },
+  { url: 'https://www.vanguardngr.com/feed/',                        name: 'Vanguard'            },
+  { url: 'https://dailytrust.com/feed',                              name: 'Daily Trust'         },
+  { url: 'https://businessday.ng/feed/',                             name: 'BusinessDay'         },
+  { url: 'https://www.channelstv.com/feed/',                         name: 'Channels TV'         },
+  { url: 'https://tvcnews.tv/feed/',                                 name: 'TVC News'            },
+  { url: 'https://www.icirnigeria.org/feed/',                        name: 'ICIR Nigeria'        },
+  // ── African / diaspora sources ────────────────────────────────────────────
+  { url: 'https://feeds.bbci.co.uk/news/world/africa/rss.xml',       name: 'BBC Africa'          },
+  { url: 'https://allafrica.com/tools/headlines/rdf/nigeria/headlines.rdf', name: 'AllAfrica Nigeria' },
+  { url: 'https://www.africanews.com/feed/rss',                      name: 'Africanews'          },
+  { url: 'https://www.theguardian.com/world/africa/rss',             name: 'Guardian Africa'     },
+  { url: 'https://www.reuters.com/rssFeed/worldNews',                name: 'Reuters World'       },
+  { url: 'https://feeds.skynews.com/feeds/rss/world.xml',            name: 'Sky News World'      },
+  { url: 'https://rss.cnn.com/rss/edition_africa.rss',               name: 'CNN Africa'          },
+  { url: 'https://www.aljazeera.com/xml/rss/all.xml',                name: 'Al Jazeera'          },
+  { url: 'https://www.dw.com/en/africa/rss-feed/rss-5765',           name: 'DW Africa'           },
+  { url: 'https://www.france24.com/en/africa/rss',                   name: 'France 24 Africa'    },
+  // ── UK / Europe Nigerian diaspora ─────────────────────────────────────────
+  { url: 'https://www.theguardian.com/uk/rss',                       name: 'Guardian UK'         },
+  { url: 'https://feeds.bbci.co.uk/news/uk/rss.xml',                 name: 'BBC UK'              },
+  // ── US Nigerian diaspora ──────────────────────────────────────────────────
+  { url: 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',   name: 'NY Times World'      },
+  { url: 'https://feeds.washingtonpost.com/rss/world',               name: 'Washington Post'     },
+  // ── Sports ────────────────────────────────────────────────────────────────
+  { url: 'https://www.goal.com/feeds/en/news',                       name: 'Goal.com'            },
+  { url: 'https://completesports.com/feed/',                         name: 'Complete Sports'     },
 ];
 
 // ─── Tier 1: Local Nigerian breaking news ────────────────────────────────────
