@@ -294,6 +294,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
     if (!url) {
       // Nothing cached yet — fetch from Supabase right now
+      console.log('[NDR] no URL — checking hasApi:', typeof import.meta.env.VITE_SUPABASE_URL, '|', import.meta.env.VITE_SUPABASE_URL?.slice(0, 30));
       // We can't call play() after an await (iOS gesture chain breaks)
       // So: set src first with a known fallback, then fetch and update
       setLoading(true);
