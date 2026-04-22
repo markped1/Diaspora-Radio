@@ -208,8 +208,11 @@ const ListenerView: React.FC<ListenerViewProps> = ({
 
           {/* ── TOP BAR: NDRtv + LIVE dot ── */}
           <div className="bg-gray-950 px-3 py-1.5 flex items-center justify-between border-b border-gray-800">
-            <span className="text-[11px] font-black text-white tracking-tight">
-              <span className="text-red-500">NDR</span>tv
+            <span className="text-[11px] font-black tracking-tight flex items-center space-x-0.5">
+              <span className="text-[#008751]">N</span>
+              <span className="text-white">D</span>
+              <span className="text-[#008751]">R</span>
+              <span className="text-white">tv</span>
             </span>
             {currentAd ? (
               <div className="flex items-center space-x-1">
