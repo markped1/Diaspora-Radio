@@ -6,6 +6,66 @@ import TvMonitor from './TvMonitor';
 import SportsTv from './SportsTv';
 import { getSharedMedia, hasApi, addMediaToCloud, setSharedStreamUrl, deleteSharedMedia, setLiveTrack, setLiveTv, setLiveStream } from '../services/apiService';
 
+// ── Quick Stream Box — paste any URL and push instantly to TV ─────────────────
+const QuickStreamBox: React.FC<{ onPushLive: (url: string, name: string) => Promise<void> }> = ({ onPushLive }) => {
+  const [url, setUrl] = React.useState('');
+  const [name, setName] = React.useState('');
+  const [pushing, setPushing] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+
+  const handle = async () => {
+    if (!url.trim()) return;
+    setPushing(true);
+    setMsg('');
+    try {
+      await onPushLive(url.trim(), name.trim() || 'Live Stream');
+      setMsg('✅ Live!');
+      setUrl('');
+      setName('');
+    } catch {
+      setMsg('❌ Failed');
+    } finally {
+      setPushing(false);
+      setTimeout(() => setMsg(''), 3000);
+    }
+  };
+
+  return (
+    <div className="bg-red-950 border border-red-800 rounded-2xl p-4 space-y-2 shadow-lg">
+      <div className="flex items-center space-x-2">
+        <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+        <h3 className="text-[8px] font-black uppercase tracking-widest text-red-300">Quick Stream to TV</h3>
+      </div>
+      <p className="text-[6px] text-red-400">Paste any URL — IPTV (.m3u8), YouTube, Dailymotion, Twitch, or direct video link</p>
+      <input
+        type="url"
+        value={url}
+        onChange={e => setUrl(e.target.value)}
+        placeholder="https://stream.example.com/live.m3u8"
+        className="w-full bg-gray-900 border border-red-800 rounded-lg px-3 py-2 text-[9px] text-white outline-none focus:border-red-500 placeholder-gray-600"
+      />
+      <input
+        type="text"
+        value={name}
+        onChange={e => setName(e.target.value)}
+        placeholder="Channel name (optional)"
+        className="w-full bg-gray-900 border border-red-800 rounded-lg px-3 py-2 text-[9px] text-white outline-none focus:border-red-500 placeholder-gray-600"
+      />
+      <div className="flex items-center space-x-2">
+        <button
+          onClick={handle}
+          disabled={pushing || !url.trim()}
+          className="flex-1 bg-red-600 text-white py-2.5 rounded-xl text-[8px] font-black uppercase flex items-center justify-center space-x-1 disabled:opacity-40 active:scale-95 transition-all"
+        >
+          <i className={`fas ${pushing ? 'fa-circle-notch fa-spin' : 'fa-broadcast-tower'} text-[9px]`}></i>
+          <span>{pushing ? 'Pushing...' : 'Push Live to TV'}</span>
+        </button>
+        {msg && <span className="text-[8px] font-black text-red-300">{msg}</span>}
+      </div>
+    </div>
+  );
+};
+
 interface AdminViewProps {
   onRefreshData: () => void;
   onRefreshNews: () => Promise<void>;
@@ -514,6 +574,27 @@ const AdminView: React.FC<AdminViewProps> = ({
               <span>Upload</span>
             </button>
           </div>
+
+          {/* ── QUICK STREAM TO TV ── */}
+          <QuickStreamBox onPushLive={async (url, name) => {
+            const item = {
+              id: 'quick-' + Date.now(),
+              name: name || 'Live Stream',
+              url,
+              type: (url.includes('.m3u8') ? 'iptv' : 'youtube') as 'iptv' | 'youtube',
+              timestamp: Date.now(),
+              isLive: true,
+            };
+            await dbService.addMedia(item);
+            if (hasApi()) {
+              await setLiveTv({ url, name: item.name, type: item.type, caption: '', youtubeId: null }).catch(() => {});
+            }
+            await loadData();
+            onRefreshData();
+            setStatusMsg('📺 Stream pushed live to TV');
+            setTimeout(() => setStatusMsg(''), 3000);
+          }} />
+
           <TvMonitor mediaList={mediaList} onMediaUpdated={async () => { await loadData(); onRefreshData(); }} />
         </div>
       )}
