@@ -11,18 +11,41 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ analyser, isActive, v
   const animationRef = useRef<number>(0);
 
   useEffect(() => {
-    if (!canvasRef.current || !analyser || !isActive) return;
+    if (!canvasRef.current || !isActive) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const bufferLength = analyser.frequencyBinCount;
+    const bufferLength = analyser ? analyser.frequencyBinCount : (variant === 'sides' ? 32 : 128);
     const dataArray = new Uint8Array(bufferLength);
+    
+    // Smooth targets for fake visualizer
+    const targetValues = new Float32Array(bufferLength);
+    const currentValues = new Float32Array(bufferLength);
 
     const draw = () => {
       animationRef.current = requestAnimationFrame(draw);
-      analyser.getByteFrequencyData(dataArray);
+      
+      if (analyser) {
+        analyser.getByteFrequencyData(dataArray);
+      } else {
+        // Generate smooth fake data
+        for (let i = 0; i < bufferLength; i++) {
+          if (Math.random() > 0.8) {
+            // Bass frequencies (lower index) get higher values
+            const isBass = i < bufferLength * 0.3;
+            const max = isBass ? 255 : 180;
+            const min = isBass ? 100 : 20;
+            targetValues[i] = min + Math.random() * (max - min);
+          } else if (Math.random() > 0.95) {
+            targetValues[i] = 0; // Occasional drop to 0
+          }
+          // Ease current towards target
+          currentValues[i] += (targetValues[i] - currentValues[i]) * 0.2;
+          dataArray[i] = currentValues[i];
+        }
+      }
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       

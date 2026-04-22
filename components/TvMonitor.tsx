@@ -625,15 +625,28 @@ const TvMonitor: React.FC<TvMonitorProps> = ({ mediaList, onMediaUpdated }) => {
           <div className="grid gap-1.5">
             {[
               // ── News ──
-              { name: 'DW Africa',          url: 'https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8', country: '🌍', cat: 'News' },
-              { name: 'DW News English',    url: 'https://dwamdstream104.akamaized.net/hls/live/2015530/dwstream104/index.m3u8', country: '🌍', cat: 'News' },
-              { name: 'DW Arabic',          url: 'https://dwamdstream105.akamaized.net/hls/live/2015531/dwstream105/index.m3u8', country: '🌍', cat: 'News' },
-              { name: 'CGTN English',       url: 'https://news.cgtn.com/resource/live/english/cgtn-news.m3u8',                  country: '🌏', cat: 'News' },
-              // ── Documentary ──
-              { name: 'CGTN Documentary',   url: 'https://news.cgtn.com/resource/live/document/cgtn-doc.m3u8',                  country: '🌏', cat: 'Docs' },
-              { name: 'NASA TV Live',       url: 'https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8',       country: '🚀', cat: 'Docs' },
-              // ── Sports & Entertainment ──
-              { name: 'Red Bull TV',        url: 'https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8',         country: '🏆', cat: 'Sport' },
+              { name: 'DW Africa',           url: 'https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8',    country: '🌍', cat: 'News' },
+              { name: 'DW News English',     url: 'https://dwamdstream104.akamaized.net/hls/live/2015530/dwstream104/index.m3u8',    country: '🌍', cat: 'News' },
+              { name: 'DW Arabic',           url: 'https://dwamdstream105.akamaized.net/hls/live/2015531/dwstream105/index.m3u8',    country: '🌍', cat: 'News' },
+              { name: 'CGTN English',        url: 'https://news.cgtn.com/resource/live/english/cgtn-news.m3u8',                     country: '🌏', cat: 'News' },
+              { name: 'CGTN French',         url: 'https://news.cgtn.com/resource/live/french/cgtn-french.m3u8',                    country: '🌏', cat: 'News' },
+              { name: 'CGTN Arabic',         url: 'https://news.cgtn.com/resource/live/arabic/cgtn-arabic.m3u8',                    country: '🌏', cat: 'News' },
+              { name: 'France 24 English',   url: 'https://stream.france24.com/hls/live/2037218/F24_EN_LO_HLS/master.m3u8',         country: '🇫🇷', cat: 'News' },
+              { name: 'France 24 French',    url: 'https://stream.france24.com/hls/live/2037218/F24_FR_LO_HLS/master.m3u8',         country: '🇫🇷', cat: 'News' },
+              { name: 'Al Jazeera English',  url: 'https://live-hls-web-aje.getaj.net/AJE/index.m3u8',                             country: '🌍', cat: 'News' },
+              { name: 'TRT World',           url: 'https://trtworldlive.akamaized.net/hls/live/571842/trtworld/master.m3u8',         country: '🌍', cat: 'News' },
+              { name: 'NASA TV Live',        url: 'https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8',          country: '🚀', cat: 'Docs' },
+              // ── Sports ──
+              { name: 'Red Bull TV',         url: 'https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8',            country: '🏆', cat: 'Sport' },
+              { name: 'Eurosport 1',         url: 'https://eurosport-hls.akamaized.net/hls/live/2016498/eurosport1/master.m3u8',    country: '⚽', cat: 'Sport' },
+              { name: 'beIN Sports News',    url: 'https://bein-sports-news.akamaized.net/hls/live/2016498/beinsportsnews/master.m3u8', country: '⚽', cat: 'Sport' },
+              // ── Entertainment / Movies ──
+              { name: 'CGTN Documentary',    url: 'https://news.cgtn.com/resource/live/document/cgtn-doc.m3u8',                     country: '🎬', cat: 'Docs' },
+              { name: 'Pluto TV Movies',     url: 'https://service-stitcher.clusters.pluto.tv/stitch/hls/channel/5d8d1c9b3b95a5001a1e7b1e/master.m3u8', country: '🎬', cat: 'Movies' },
+              { name: 'Pluto TV Action',     url: 'https://service-stitcher.clusters.pluto.tv/stitch/hls/channel/5d8d1c9b3b95a5001a1e7b1f/master.m3u8', country: '🎬', cat: 'Movies' },
+              { name: 'Pluto TV Comedy',     url: 'https://service-stitcher.clusters.pluto.tv/stitch/hls/channel/5d8d1c9b3b95a5001a1e7b20/master.m3u8', country: '😂', cat: 'Movies' },
+              { name: 'Pluto TV Horror',     url: 'https://service-stitcher.clusters.pluto.tv/stitch/hls/channel/5d8d1c9b3b95a5001a1e7b21/master.m3u8', country: '👻', cat: 'Movies' },
+              { name: 'Pluto TV Thrillers',  url: 'https://service-stitcher.clusters.pluto.tv/stitch/hls/channel/5d8d1c9b3b95a5001a1e7b22/master.m3u8', country: '🎭', cat: 'Movies' },
             ].map(ch => (
               <div key={ch.name} className="flex items-center justify-between bg-orange-50 rounded-lg px-3 py-2 border border-orange-100">
                 <div className="flex items-center space-x-2 truncate">

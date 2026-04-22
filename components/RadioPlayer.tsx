@@ -55,13 +55,9 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
-  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const audioEl = useRef<HTMLAudioElement | null>(null);       // the <audio> element
-  const audioCtx = useRef<AudioContext | null>(null);          // Web Audio context
-  const gainNode = useRef<GainNode | null>(null);              // volume control node
-  const sourceNode = useRef<MediaElementAudioSourceNode | null>(null); // audio graph source
   const loadedUrl = useRef<string | null>(null);               // currently loaded URL
   const onEndedRef = useRef(onTrackEnded);
   const broadcastRef = useRef(false);
@@ -185,35 +181,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       : isDucking ? volume * 0.15 : volume;
 
     if (audioEl.current) audioEl.current.volume = Math.max(0, Math.min(1, target));
-    if (gainNode.current && audioCtx.current && audioCtx.current.state !== 'closed') {
-      gainNode.current.gain.value = target;
-    }
   }, [volume, isDucking, musicVolumeOverride]);
-
-  // ── Connect Web Audio graph for visualizer ─────────────────────────────────
-  const connectGraph = useCallback(() => {
-    const audio = audioEl.current;
-    const ctx = audioCtx.current;
-    if (!audio || !ctx || ctx.state !== 'running') return;
-    if (sourceNode.current) return; // already connected
-
-    try {
-      if (!gainNode.current) {
-        const g = ctx.createGain();
-        g.connect(ctx.destination);
-        gainNode.current = g;
-      }
-      const src = ctx.createMediaElementSource(audio);
-      const analyserNode = ctx.createAnalyser();
-      analyserNode.fftSize = 256;
-      src.connect(analyserNode);
-      analyserNode.connect(gainNode.current);
-      sourceNode.current = src;
-      setAnalyser(analyserNode);
-    } catch (e: any) {
-      if (!e?.message?.includes('already been created')) console.warn('Graph connect:', e);
-    }
-  }, []);
 
   // ── Main play/pause handler — MUST be synchronous for mobile ──────────────
   const handlePlayPause = () => {
@@ -230,19 +198,6 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     if (playing) {
       audio.pause();
       return;
-    }
-
-    // ── Step 1: Resume / create AudioContext inside user gesture ──────────
-    if (!audioCtx.current || audioCtx.current.state === 'closed') {
-      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-      if (Ctx) {
-        audioCtx.current = new Ctx();
-        audioCtx.current.resume().then(connectGraph).catch(() => {});
-      }
-    } else if (audioCtx.current.state === 'suspended') {
-      audioCtx.current.resume().then(connectGraph).catch(() => {});
-    } else {
-      connectGraph();
     }
 
     // ── Step 2: Ensure src is set (synchronous) ───────────────────────────
@@ -367,7 +322,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col items-center w-full space-y-2">
-      <Logo size="lg" analyser={analyser} isPlaying={playing} />
+      <Logo size="lg" isPlaying={playing} />
 
       {/* Progress bar */}
       <div className="w-full px-0 -mt-4 relative z-20">

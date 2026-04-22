@@ -34,7 +34,7 @@ export async function getLiveState(): Promise<{ track: any; messages: any[]; tv:
   if (!hasApi()) return { track: null, messages: [], tv: null, stream: '' };
   try {
     const rows = await sb('/live_state?id=eq.1&select=*');
-    if (rows?.length) {
+    if (Array.isArray(rows) && rows.length) {
       const r = rows[0];
       return { track: r.track ?? null, messages: r.messages ?? [], tv: r.tv ?? null, stream: r.stream ?? '' };
     }
@@ -70,7 +70,7 @@ export async function getSharedMedia(): Promise<any[]> {
   if (!hasApi()) return [];
   try {
     const rows = await sb('/media?select=*&order=created_at.desc');
-    return rows || [];
+    return Array.isArray(rows) ? rows : [];
   } catch { return []; }
 }
 

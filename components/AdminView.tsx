@@ -104,7 +104,7 @@ const AdminView: React.FC<AdminViewProps> = ({
   useEffect(() => {
     const syncInterval = setInterval(() => {
       if (mediaList.length > 0 && hasApi()) {
-        const unsynced = mediaList.filter(m => (!m.url || m.url.startsWith('blob:')) && m.file);
+        const unsynced = mediaList.filter(m => (!m.url || String(m.url).startsWith('blob:')) && m.file);
         if (unsynced.length > 0 && !isProcessing) {
           console.log(`☁️ Background sync triggered for ${unsynced.length} files`);
           syncAllMediaToCloud();
@@ -123,7 +123,7 @@ const AdminView: React.FC<AdminViewProps> = ({
       return;
     }
 
-    const unsynced = mediaList.filter(m => (!m.url || m.url.startsWith('blob:')) && m.file);
+    const unsynced = mediaList.filter(m => (!m.url || String(m.url).startsWith('blob:')) && m.file);
     if (unsynced.length === 0) {
       setStatusMsg('✅ All files are already synced to cloud');
       setTimeout(() => setStatusMsg(''), 3000);
@@ -281,6 +281,7 @@ const AdminView: React.FC<AdminViewProps> = ({
   };
 
   const filteredMedia = mediaList.filter(m => {
+    if (!m) return false;
     if (mediaSubTab === 'audio') return m.type === 'audio';
     return m.type === 'video' || m.type === 'image';
   });
@@ -532,7 +533,7 @@ const AdminView: React.FC<AdminViewProps> = ({
                   <span className="text-[8px] font-black uppercase">Upload Audio</span>
                 </button>
                 <button onClick={() => {
-                  const allAudio = [...cloudMedia.filter(m => m.type === 'audio'), ...mediaList.filter(m => m.type === 'audio' && m.url?.startsWith('http'))];
+                  const allAudio = [...cloudMedia.filter(m => m && m.type === 'audio'), ...mediaList.filter(m => m && m.type === 'audio' && m.url && String(m.url).startsWith('http'))];
                   if (allAudio.length > 0) onPlayTrack(allAudio[Math.floor(Math.random() * allAudio.length)]);
                 }}
                   className="flex-1 bg-green-600 text-white py-2.5 rounded-xl flex items-center justify-center space-x-1 shadow active:scale-95">
@@ -565,8 +566,8 @@ const AdminView: React.FC<AdminViewProps> = ({
 
               {/* Unified track list — cloud + local merged */}
               {(() => {
-                const cloudAudio = cloudMedia.filter(m => m.type === 'audio');
-                const localAudio = mediaList.filter(m => m.type === 'audio');
+                const cloudAudio = cloudMedia.filter(m => m && m.type === 'audio');
+                const localAudio = mediaList.filter(m => m && m.type === 'audio');
                 // Merge: cloud items first, then local-only items not in cloud
                 const cloudIds = new Set(cloudAudio.map(c => c.id));
                 const localOnly = localAudio.filter(l => !cloudIds.has(l.id) && !cloudAudio.find(c => c.name === l.name));
@@ -597,7 +598,7 @@ const AdminView: React.FC<AdminViewProps> = ({
                         <p className="text-[7px] text-gray-300 font-black uppercase">No audio tracks yet</p>
                       </div>
                     ) : allTracks.map(item => {
-                      const isCloud = item.url?.startsWith('http');
+                      const isCloud = item.url && String(item.url).startsWith('http');
                       return (
                         <div key={item.id} className={`p-3 rounded-xl border flex items-center justify-between shadow-sm ${isCloud ? 'bg-blue-50 border-blue-100' : 'bg-white border-green-50'}`}>
                           <div className="flex items-center space-x-2 truncate pr-2">
@@ -605,7 +606,7 @@ const AdminView: React.FC<AdminViewProps> = ({
                               <i className={`fas ${isCloud ? 'fa-cloud' : 'fa-hdd'} text-white text-[7px]`}></i>
                             </div>
                             <div className="truncate">
-                              <p className="text-[9px] font-bold text-gray-900 truncate">{item.name.replace(/\.(mp3|wav|m4a|aac|ogg|flac)$/i, '')}</p>
+                              <p className="text-[9px] font-bold text-gray-900 truncate">{String(item.name || 'Unknown Track').replace(/\.(mp3|wav|m4a|aac|ogg|flac)$/i, '')}</p>
                               <p className={`text-[6px] ${isCloud ? 'text-blue-400' : 'text-gray-400'}`}>{isCloud ? '☁️ Cloud' : '📱 Local only'}</p>
                             </div>
                           </div>
@@ -641,7 +642,7 @@ const AdminView: React.FC<AdminViewProps> = ({
                 </button>
               </div>
               {(() => {
-                const videos = mediaList.filter(m => m.type === 'video' || m.type === 'youtube' || m.type === 'iptv');
+                const videos = mediaList.filter(m => m && (m.type === 'video' || m.type === 'youtube' || m.type === 'iptv'));
                 return (
                   <div className="space-y-2">
                     {videos.length > 0 && (
@@ -670,7 +671,7 @@ const AdminView: React.FC<AdminViewProps> = ({
                             <i className={`fas ${item.type === 'youtube' ? 'fa-youtube' : item.type === 'iptv' ? 'fa-satellite-dish' : 'fa-film'} text-purple-500 text-[7px]`}></i>
                           </div>
                           <div className="truncate">
-                            <p className="text-[9px] font-bold text-gray-900 truncate">{item.name}</p>
+                            <p className="text-[9px] font-bold text-gray-900 truncate">{item.name || 'Unknown Video'}</p>
                             <p className="text-[6px] text-gray-400 uppercase">{item.type}{item.isLive ? ' · 🔴 Live' : ''}</p>
                           </div>
                         </div>
@@ -722,7 +723,7 @@ const AdminView: React.FC<AdminViewProps> = ({
 
               {/* Ad library — images and videos marked as ads */}
               {(() => {
-                const ads = mediaList.filter(m => m.type === 'image' || (m.type === 'video' && m.sponsorName));
+                const ads = mediaList.filter(m => m && (m.type === 'image' || (m.type === 'video' && m.sponsorName)));
                 return ads.length === 0 ? (
                   <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-8 text-center">
                     <i className="fas fa-ad text-2xl text-gray-200 mb-2 block"></i>
@@ -735,7 +736,7 @@ const AdminView: React.FC<AdminViewProps> = ({
                       <div key={item.id} className="bg-amber-50 p-3 rounded-xl border border-amber-100 flex items-center justify-between">
                         <div className="flex items-center space-x-2 truncate pr-2">
                           <i className={`fas ${item.type === 'image' ? 'fa-image' : 'fa-film'} text-amber-500 text-sm shrink-0`}></i>
-                          <p className="text-[9px] font-bold text-gray-900 truncate">{item.name}</p>
+                          <p className="text-[9px] font-bold text-gray-900 truncate">{item.name || 'Unknown Ad'}</p>
                         </div>
                         <button onClick={async () => { await dbService.deleteMedia(item.id); await loadData(); }}
                           className="w-7 h-7 bg-red-50 text-red-400 rounded-full flex items-center justify-center shrink-0">

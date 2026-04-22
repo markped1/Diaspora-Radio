@@ -415,7 +415,7 @@ const App: React.FC = () => {
               setCurrentTrackName(cleanTrackName(t.name));
               setIsRadioPlaying(true);
               if (hasApi()) {
-                if (t.url?.startsWith('http')) {
+                if (t.url && String(t.url).startsWith('http')) {
                   // Cloud URL — push directly to listeners
                   setLiveTrack({ url: t.url, name: cleanTrackName(t.name) }).catch(() => {});
                 } else {
