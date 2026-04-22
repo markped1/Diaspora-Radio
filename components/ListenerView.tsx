@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import SponsoredVideo from './SponsoredVideo';
 import IptvPlayer from './IptvPlayer';
 import { NewsItem, MediaFile, AdminMessage, ListenerReport } from '../types';
@@ -17,6 +17,53 @@ interface ListenerViewProps {
   reports: ListenerReport[];
   onPlayTrack: (track: MediaFile) => void;
 }
+
+// Memoized TV screen — only re-renders when currentAd or tvAudioOn actually changes
+const TvScreen = memo(({ currentAd, tvAudioOn, nextAd }: {
+  currentAd: MediaFile | null;
+  tvAudioOn: boolean;
+  nextAd: () => void;
+}) => {
+  if (!currentAd) {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950 space-y-2">
+        <span className="text-3xl font-black text-gray-800">NDRtv</span>
+        <span className="text-[7px] font-black text-gray-700 uppercase tracking-widest">Off Air</span>
+      </div>
+    );
+  }
+  if (currentAd.type === 'image') {
+    return <img src={currentAd.url} className="w-full h-full object-cover" alt="ad" />;
+  }
+  if (currentAd.type === 'iptv') {
+    return <IptvPlayer url={currentAd.url} muted={!tvAudioOn} autoPlay className="w-full h-full object-contain" />;
+  }
+  if (currentAd.type === 'youtube' && currentAd.url.includes('youtube.com/embed')) {
+    return (
+      <iframe
+        key={currentAd.id}
+        src={currentAd.url.includes('?') ? currentAd.url + '&mute=0' : currentAd.url + '?mute=0'}
+        className="w-full h-full"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        title={currentAd.name}
+      />
+    );
+  }
+  if (currentAd.type === 'youtube') {
+    return (
+      <div className="w-full h-full bg-gray-900 flex flex-col items-center justify-center space-y-3 p-4">
+        <span className="text-4xl">⚽</span>
+        <p className="text-[8px] font-black text-white uppercase text-center">Live Match Available</p>
+        <button onClick={() => window.open(currentAd.url, '_blank')}
+          className="bg-red-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center space-x-2">
+          <i className="fas fa-play text-sm"></i><span>Watch Live Match</span>
+        </button>
+      </div>
+    );
+  }
+  return <SponsoredVideo video={currentAd} onEnded={nextAd} isMutedByRadio={!tvAudioOn} />;
+});
 
 const ListenerView: React.FC<ListenerViewProps> = ({ 
   news, 
@@ -118,7 +165,7 @@ const ListenerView: React.FC<ListenerViewProps> = ({
 
   const liveVideos = useMemo(() => sponsoredVideos.filter(v => v.isLive), [sponsoredVideos]);
   const adPool = liveVideos;
-  const currentAd = adPool.length > 0 ? adPool[adIndex % adPool.length] : null;
+  const currentAd = useMemo(() => adPool.length > 0 ? adPool[adIndex % adPool.length] : null, [adPool, adIndex]);
 
   return (
     <div className="flex flex-col space-y-4 pb-8 px-1 text-[#008751] animate-scale-in">
@@ -161,38 +208,7 @@ const ListenerView: React.FC<ListenerViewProps> = ({
 
           {/* ── SCREEN ── */}
           <div className="relative bg-black" style={{ height: '276px' }}>
-            {currentAd ? (
-              <>
-                {currentAd.type === 'image' ? (
-                  <img src={currentAd.url} className="w-full h-full object-cover" alt="ad" />
-                ) : currentAd.type === 'iptv' ? (
-                  <IptvPlayer url={currentAd.url} muted={!tvAudioOn} autoPlay className="w-full h-full object-contain" />
-                ) : currentAd.type === 'youtube' && currentAd.url.includes('youtube.com/embed') ? (
-                  <iframe
-                    key={currentAd.id}
-                    src={currentAd.url.includes('?') ? currentAd.url + '&mute=0' : currentAd.url + '?mute=0'}
-                    className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen title={currentAd.name}
-                  />
-                ) : currentAd.type === 'youtube' ? (
-                  <div className="w-full h-full bg-gray-900 flex flex-col items-center justify-center space-y-3 p-4">
-                    <span className="text-4xl">⚽</span>
-                    <p className="text-[8px] font-black text-white uppercase text-center">Live Match Available</p>
-                    <button onClick={() => window.open(currentAd.url, '_blank')}
-                      className="bg-red-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center space-x-2">
-                      <i className="fas fa-play text-sm"></i><span>Watch Live Match</span>
-                    </button>
-                  </div>
-                ) : (
-                  <SponsoredVideo video={currentAd} onEnded={nextAd} isMutedByRadio={!tvAudioOn} />
-                )}
-              </>
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950 space-y-2">
-                <span className="text-3xl font-black text-gray-800">NDRtv</span>
-                <span className="text-[7px] font-black text-gray-700 uppercase tracking-widest">Off Air</span>
-              </div>
-            )}
+            <TvScreen currentAd={currentAd} tvAudioOn={tvAudioOn} nextAd={nextAd} />
           </div>
 
           {/* ── BOTTOM CONTROLS ── */}
