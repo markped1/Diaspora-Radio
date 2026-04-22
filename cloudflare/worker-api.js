@@ -19,11 +19,20 @@ async function handleRequest(request) {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
-  const url = new URL(request.url);
-  const target = url.searchParams.get('url');
+  // Parse the full request URL to get query params
+  const reqUrl = new URL(request.url);
+  
+  // Support both ?url= and path-based: /proxy/https://...
+  let target = reqUrl.searchParams.get('url');
+  
+  // Also try reading from the path if no query param
+  if (!target) {
+    const path = reqUrl.pathname.replace(/^\//, '');
+    if (path.startsWith('http')) target = decodeURIComponent(path);
+  }
 
   if (!target) {
-    return new Response('NDR CORS Proxy — add ?url=https://stream.m3u8', {
+    return new Response('NDR CORS Proxy OK — Usage: ?url=https://stream.m3u8\nRequest URL: ' + request.url, {
       status: 200,
       headers: { ...CORS_HEADERS, 'Content-Type': 'text/plain' },
     });
@@ -54,7 +63,7 @@ async function handleRequest(request) {
 
     if (isM3u8) {
       const text = await upstream.text();
-      const proxyBase = url.protocol + '//' + url.host + '/?url=';
+      const proxyBase = reqUrl.protocol + '//' + reqUrl.host + '/?url=';
 
       const rewritten = text.split('\n').map(line => {
         const trimmed = line.trim();
