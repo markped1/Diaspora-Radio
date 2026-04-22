@@ -307,9 +307,10 @@ const App: React.FC = () => {
       return;
     }
     const currentIndex = list.findIndex(t => t.id === activeTrackId);
-    // Prefer cloud tracks
+    // Prefer cloud tracks — only cloud tracks can be heard by listeners
     const cloudTracks = list.filter(t => t.url?.startsWith('http'));
     const pool = cloudTracks.length > 0 ? cloudTracks : list;
+    if (pool.length === 0) return;
     let nextIndex = isShuffle ? Math.floor(Math.random() * pool.length) : (currentIndex + 1) % pool.length;
     const track = pool[nextIndex];
     if (track) {
@@ -317,7 +318,10 @@ const App: React.FC = () => {
       setActiveTrackUrl(track.url);
       setCurrentTrackName(cleanTrackName(track.name));
       setIsRadioPlaying(true);
-      if (hasApi() && track.url?.startsWith('http')) setLiveTrack({ url: track.url, name: cleanTrackName(track.name) }).catch(() => {});
+      // Push to Supabase so all listeners hear it
+      if (hasApi() && track.url?.startsWith('http')) {
+        setLiveTrack({ url: track.url, name: cleanTrackName(track.name) }).catch(() => {});
+      }
     }
   }, [activeTrackId, isShuffle]);
 
