@@ -49,17 +49,23 @@ function getSessionId(): string {
 
 // ── Fetch geo from free IP API ────────────────────────────────────────────────
 async function getGeoInfo(): Promise<{ region: string; country: string; city: string }> {
-  try {
-    const res = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(5000) });
-    const data = await res.json();
-    return {
-      region: data.continent_code || data.region || 'Unknown',
-      country: data.country_name || 'Unknown',
-      city: data.city || 'Unknown',
-    };
-  } catch {
-    return { region: 'Unknown', country: 'Unknown', city: 'Unknown' };
+  // Try multiple free geo APIs in order
+  const apis = [
+    'https://ipapi.co/json/',
+    'https://ip-api.com/json/?fields=continentCode,country,city',
+    'https://ipwho.is/',
+  ];
+  for (const api of apis) {
+    try {
+      const res = await fetch(api, { signal: AbortSignal.timeout(4000) });
+      const data = await res.json();
+      const region = data.continent_code || data.continentCode || data.continent || 'Unknown';
+      const country = data.country_name || data.country || 'Unknown';
+      const city = data.city || 'Unknown';
+      if (country !== 'Unknown') return { region, country, city };
+    } catch { /* try next */ }
   }
+  return { region: 'Unknown', country: 'Unknown', city: 'Unknown' };
 }
 
 // ── Register this listener session ───────────────────────────────────────────
@@ -79,7 +85,10 @@ export async function registerSession(isWatching = false): Promise<void> {
     };
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
     await pushSessionToSupabase(session);
-  } catch { /* silent */ }
+    console.log(`📊 Session registered: ${geo.country} (${geo.city}) — ${session.device}`);
+  } catch (e) {
+    console.warn('📊 Session registration failed:', e);
+  }
 }
 
 // ── Update session (heartbeat) ────────────────────────────────────────────────
@@ -98,8 +107,8 @@ export async function updateSession(isWatching: boolean): Promise<void> {
 
 // ── Push session to Supabase listener_sessions table ─────────────────────────
 async function pushSessionToSupabase(session: ListenerSession): Promise<void> {
-  const SB_URL = import.meta.env.VITE_SUPABASE_URL || '';
-  const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const SB_URL = (import.meta as any).env?.VITE_SUPABASE_URL || '';
+  const SB_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
   if (!SB_URL || !SB_KEY) return;
 
   await fetch(`${SB_URL}/rest/v1/listener_sessions`, {
@@ -126,8 +135,8 @@ async function pushSessionToSupabase(session: ListenerSession): Promise<void> {
 
 // ── Fetch analytics for admin ─────────────────────────────────────────────────
 export async function fetchAnalytics(): Promise<AnalyticsSnapshot> {
-  const SB_URL = import.meta.env.VITE_SUPABASE_URL || '';
-  const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const SB_URL = (import.meta as any).env?.VITE_SUPABASE_URL || '';
+  const SB_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
 
   const empty: AnalyticsSnapshot = {
     totalListeners: 0, tvViewers: 0, radioListeners: 0,
