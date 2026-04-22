@@ -230,15 +230,26 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     }
   }, [activeTrackUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── forcePlaying: pause/resume when flag changes without URL change ───────
+  // ── forcePlaying: pause/resume when flag changes ────────────────────────
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+
+    if (forcePlaying && loadedUrl.current && audio.paused) {
+      // URL already loaded — just play it
+      setLoading(true);
+      audio.play().catch((err: DOMException) => {
+        setLoading(false);
+        if (err.name === 'NotAllowedError') {
+          setError('Tap ▶ to play');
+          setTimeout(() => setError(''), 4000);
+        }
+      });
+    }
+
     if (!forcePlaying && !audio.paused) {
       audio.pause();
     }
-    // play() on forcePlaying=true is handled inside the URL load effect above
-    // to avoid calling play() before the browser has buffered any data
   }, [forcePlaying]);
 
   // ── Volume / ducking ─────────────────────────────────────────────────────
