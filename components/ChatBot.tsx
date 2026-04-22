@@ -1,0 +1,230 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { getAIClient } from '../services/geminiService';
+import { APP_NAME, STATION_TAGLINE, DESIGNER_NAME } from '../constants';
+
+interface Message {
+  role: 'user' | 'bot';
+  text: string;
+  time: string;
+}
+
+const SYSTEM_CONTEXT = `You are NDR Assistant, the official AI helper for ${APP_NAME} — ${STATION_TAGLINE}.
+
+ABOUT THE STATION:
+- ${APP_NAME} is a live online radio and TV station for Nigerians in the diaspora worldwide
+- Designed by ${DESIGNER_NAME}
+- Available at diaspora-radio.vercel.app and as an Android APK
+- Broadcasts live music, news, sports, and TV channels 24/7
+
+FEATURES YOU KNOW ABOUT:
+1. RADIO: Live audio streaming. Admin plays tracks from Cloudinary cloud storage. Listeners tap play to tune in. Supports MP3, AAC, HLS streams.
+2. TV: Live IPTV channels including DW Africa, Al Jazeera, France 24, CGTN, NASA TV, TRT World, Abu Dhabi Sports, Dubai Sports, FilmRise Movies, and more. Admin can push any stream URL live.
+3. NEWS: Automated news from Premium Times, Punch Nigeria, Channels TV, BusinessDay, BBC Africa, Al Jazeera, Africanews, Complete Sports. News bulletins broadcast at :00 (full) and :30 (headlines) every hour. No news midnight–6am.
+4. GENRE FOLDERS: Admin organises music by genre (Afrobeats, Amapiano, R&B, Hip-Hop, Gospel, Highlife, Reggae, Jazz, etc.) with scheduled time slots.
+5. ANALYTICS: Live listener count, TV viewers, top countries, regions. Requires listener_sessions table in Supabase.
+6. COMMUNITY REPORTS: Listeners can submit live reports from their city.
+7. ADMIN PANEL: Password-protected. Features: Command Center, Newsroom, TV Studio, Sports, Media Library, Genre Manager, Analytics, Inbox, Logs.
+8. KILL ALL: Admin can stop all playing instances globally with one button.
+
+TECHNICAL:
+- Backend: Supabase (real-time sync)
+- Media storage: Cloudinary
+- CORS proxy: Cloudflare Worker at blue-waterfall-01a7.mckpedersen.workers.dev
+- News AI: Google Gemini (article rewriting, weather)
+- Built with: React, TypeScript, Vite, Tailwind CSS, hls.js, Capacitor (Android)
+
+NIGERIAN DIASPORA CONTEXT:
+- Serves Nigerians in UK, USA, Canada, Australia, Germany, Italy, Spain, France, Ireland, Netherlands, UAE, Saudi Arabia, Qatar, South Africa, and worldwide
+- Covers Nigerian politics, economy, culture, sports, and diaspora news
+- Newscaster: Favour Obosa
+
+TONE: Be warm, helpful, and knowledgeable. Keep answers concise. Use Nigerian-friendly language when appropriate. If asked about something outside the app, politely redirect to app-related topics.`;
+
+const ChatBot: React.FC = () => {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      role: 'bot',
+      text: `Welcome to ${APP_NAME}! 👋 I'm your NDR Assistant. Ask me anything about the station, how to listen, our TV channels, news, or anything else about the app.`,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    },
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [open, messages]);
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text || loading) return;
+
+    const userMsg: Message = {
+      role: 'user',
+      text,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setMessages(prev => [...prev, userMsg]);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const ai = getAIClient();
+      const history = messages.slice(-6).map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.text }],
+      }));
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: [
+          { role: 'user', parts: [{ text: SYSTEM_CONTEXT }] },
+          { role: 'model', parts: [{ text: 'Understood. I am NDR Assistant, ready to help.' }] },
+          ...history,
+          { role: 'user', parts: [{ text }] },
+        ],
+        config: { temperature: 0.7, maxOutputTokens: 300 },
+      });
+
+      const reply = response.text?.trim() || 'Sorry, I could not get a response. Please try again.';
+      setMessages(prev => [...prev, {
+        role: 'bot',
+        text: reply,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+    } catch {
+      setMessages(prev => [...prev, {
+        role: 'bot',
+        text: 'I\'m having trouble connecting right now. Please check that the Gemini API key is configured in settings.',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  };
+
+  const quickQuestions = [
+    'How do I listen?',
+    'What TV channels are available?',
+    'When is the news bulletin?',
+    'How do I download the app?',
+  ];
+
+  return (
+    <>
+      {/* Floating button */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="fixed bottom-6 right-4 z-50 w-12 h-12 rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-95"
+        style={{ backgroundColor: '#008751' }}
+        aria-label="Open NDR Assistant"
+      >
+        {open
+          ? <i className="fas fa-times text-white text-lg" />
+          : <i className="fas fa-comment-dots text-white text-lg" />}
+        {!open && (
+          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+            <span className="text-[6px] font-black text-white">AI</span>
+          </span>
+        )}
+      </button>
+
+      {/* Chat window */}
+      {open && (
+        <div className="fixed bottom-20 right-4 z-50 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-green-100 flex flex-col overflow-hidden"
+          style={{ height: '420px' }}>
+
+          {/* Header */}
+          <div className="px-4 py-3 flex items-center space-x-2 border-b border-green-50" style={{ backgroundColor: '#008751' }}>
+            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+              <i className="fas fa-robot text-white text-sm" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-white uppercase tracking-widest">NDR Assistant</p>
+              <p className="text-[7px] text-white/70">Always here to help</p>
+            </div>
+            <div className="ml-auto flex items-center space-x-1">
+              <span className="w-1.5 h-1.5 bg-green-300 rounded-full animate-pulse" />
+              <span className="text-[6px] text-white/70 font-black uppercase">Online</span>
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50">
+            {messages.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] rounded-2xl px-3 py-2 ${
+                  msg.role === 'user'
+                    ? 'bg-[#008751] text-white rounded-br-sm'
+                    : 'bg-white text-gray-800 border border-gray-100 shadow-sm rounded-bl-sm'
+                }`}>
+                  <p className="text-[9px] leading-relaxed">{msg.text}</p>
+                  <p className={`text-[6px] mt-1 ${msg.role === 'user' ? 'text-white/60 text-right' : 'text-gray-400'}`}>
+                    {msg.time}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {loading && (
+              <div className="flex justify-start">
+                <div className="bg-white border border-gray-100 shadow-sm rounded-2xl rounded-bl-sm px-4 py-3">
+                  <div className="flex space-x-1">
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Quick questions — only show when no conversation yet */}
+          {messages.length === 1 && (
+            <div className="px-3 py-2 bg-gray-50 border-t border-gray-100 flex flex-wrap gap-1">
+              {quickQuestions.map(q => (
+                <button key={q} onClick={() => { setInput(q); setTimeout(send, 50); }}
+                  className="text-[7px] font-black uppercase bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded-full hover:bg-green-100 transition-colors">
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Input */}
+          <div className="px-3 py-2 border-t border-gray-100 bg-white flex items-center space-x-2">
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKey}
+              placeholder="Ask me anything..."
+              className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-3 py-2 text-[9px] outline-none focus:border-green-400"
+            />
+            <button
+              onClick={send}
+              disabled={!input.trim() || loading}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-white disabled:opacity-40 transition-all active:scale-95"
+              style={{ backgroundColor: '#008751' }}
+            >
+              <i className="fas fa-paper-plane text-[9px]" />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+export default ChatBot;

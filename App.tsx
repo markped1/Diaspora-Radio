@@ -4,6 +4,7 @@ import ListenerView from './components/ListenerView';
 import AdminView from './components/AdminView';
 import PasswordModal from './components/PasswordModal';
 import RadioPlayer from './components/RadioPlayer';
+import ChatBot from './components/ChatBot';
 import { dbService } from './services/dbService';
 import { scanNigerianNewspapers } from './services/newsAIService';
 import { getDetailedBulletinAudio, getNewsAudio, getJingleAudio, registerSpeechCallbacks } from './services/aiDjService';
@@ -532,6 +533,7 @@ const App: React.FC = () => {
       </main>
 
       {showAuth && <PasswordModal onClose={() => setShowAuth(false)} onSuccess={() => { setRole(UserRole.ADMIN); setShowAuth(false); }} />}
+      <ChatBot />
     </div>
   );
 };
