@@ -1,6 +1,5 @@
 
 import { NewsItem, DjScript, AdminLog, MediaFile, AdminMessage, ListenerReport, SocialLink, SportChannel } from '../types';
-import { DEFAULT_STREAM_URL } from '../constants';
 
 const DB_NAME = 'NDN_RADIO_DB';
 const MEDIA_STORE = 'media_files';
@@ -226,7 +225,7 @@ class DBService {
   }
 
   getLiveStreamUrl(): string {
-    return localStorage.getItem(this.STORAGE_KEYS.LIVE_STREAM_URL) || DEFAULT_STREAM_URL;
+    return localStorage.getItem(this.STORAGE_KEYS.LIVE_STREAM_URL) || '';
   }
 
   setLiveStreamUrl(url: string): void {

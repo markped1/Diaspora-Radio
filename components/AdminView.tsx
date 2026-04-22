@@ -5,7 +5,6 @@ import { AdminLog, MediaFile, NewsItem, ListenerReport, SportChannel } from '../
 import TvMonitor from './TvMonitor';
 import SportsTv from './SportsTv';
 import { getSharedMedia, hasApi, addMediaToCloud, setSharedStreamUrl, deleteSharedMedia } from '../services/apiService';
-import { DEFAULT_STREAM_URL } from '../constants';
 
 interface AdminViewProps {
   onRefreshData: () => void;
@@ -60,7 +59,7 @@ const AdminView: React.FC<AdminViewProps> = ({
   const [reports, setReports] = useState<ListenerReport[]>([]);
   const [voiceMsg, setVoiceMsg] = useState('');
   const [nextSyncIn, setNextSyncIn] = useState<string>('');
-  const [liveStreamUrl, setLiveStreamUrlState] = useState(() => dbService.getLiveStreamUrl() || DEFAULT_STREAM_URL);
+  const [liveStreamUrl, setLiveStreamUrlState] = useState(() => dbService.getLiveStreamUrl());
   const [adInterval, setAdInterval] = useState(() => Number(localStorage.getItem('ndr_ad_interval') || 3));
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -356,7 +355,7 @@ const AdminView: React.FC<AdminViewProps> = ({
               <h3 className="text-[8px] font-black uppercase tracking-widest text-blue-700">Station Broadcast Override</h3>
             </div>
             <p className="text-[6px] text-gray-400 leading-relaxed">
-              This station defaults to <strong>{DEFAULT_STREAM_URL}</strong>. Use this box only if you need to override the main broadcast with a temporary live feed (e.g. Zeno.fm).
+              Enter a live stream URL to broadcast to all listeners (e.g. a Zeno.fm or Icecast stream). Leave blank to use uploaded audio tracks only.
             </p>
             <input
               type="url"
