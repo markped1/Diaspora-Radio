@@ -3,11 +3,9 @@
  * Works on: Chrome, Firefox, Edge, Safari, Android WebView (Capacitor APK), iOS
  *
  * Strategy:
- * - Uses hls.js on ALL browsers that support MSE (Chrome, Firefox, Edge, Android WebView)
- * - Falls back to native HLS on Safari/iOS
- * - Always starts muted for autoplay compliance
- * - Shows "Tap to Watch" overlay when autoplay is blocked
- * - Auto-recovers from network and media errors
+ * - Tries direct stream first
+ * - On CORS/network failure, retries through CORS proxy automatically
+ * - Uses hls.js on MSE browsers, native HLS on Safari/iOS
  */
 import React, { useRef, useEffect, useState } from 'react';
 import Hls from 'hls.js';
@@ -19,6 +17,13 @@ interface IptvPlayerProps {
   onError?: () => void;
   onPlaying?: () => void;
   className?: string;
+}
+
+// CORS proxy — routes stream through Cloudflare Worker
+const PROXY_URL = import.meta.env.VITE_PROXY_URL || '';
+function proxyUrl(url: string): string {
+  if (!PROXY_URL) return url;
+  return `${PROXY_URL}?url=${encodeURIComponent(url)}`;
 }
 
 const IptvPlayer: React.FC<IptvPlayerProps> = ({
@@ -33,21 +38,12 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
   const hlsRef = useRef<Hls | null>(null);
   const [status, setStatus] = useState<'loading' | 'playing' | 'error' | 'blocked'>('loading');
   const [errorMsg, setErrorMsg] = useState('');
+  const retriedWithProxy = useRef(false);
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !url) return;
+  const loadStream = (streamUrl: string, video: HTMLVideoElement) => {
+    if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
 
-    setStatus('loading');
-    setErrorMsg('');
-
-    // Destroy previous hls instance
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-
-    const isHls = url.includes('.m3u8') || url.includes('m3u8');
+    const isHls = streamUrl.includes('.m3u8') || streamUrl.includes('m3u8');
 
     // Attempt play — always start muted for autoplay policy
     const doPlay = () => {
@@ -78,7 +74,7 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
       video.removeAttribute('crossorigin');
       video.playsInline = true;
 
-      hls.loadSource(url);
+      hls.loadSource(streamUrl);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -89,11 +85,17 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              // Try to recover from network errors
-              hls.startLoad();
+              // First fatal network error — retry with proxy if not already tried
+              if (!retriedWithProxy.current && PROXY_URL && !streamUrl.includes(PROXY_URL)) {
+                retriedWithProxy.current = true;
+                hls.destroy();
+                hlsRef.current = null;
+                loadStream(proxyUrl(url), video);
+              } else {
+                hls.startLoad();
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              // Try to recover from media errors
               hls.recoverMediaError();
               break;
             default:
@@ -108,7 +110,7 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
 
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Safari / iOS — native HLS
-      video.src = url;
+      video.src = streamUrl;
       video.muted = true;
       video.playsInline = true;
       video.removeAttribute('crossorigin');
@@ -116,13 +118,24 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
       if (autoPlay) doPlay();
     } else {
       // Non-HLS direct URL (MP4, WebM, etc.)
-      video.src = url;
+      video.src = streamUrl;
       video.muted = true;
       video.playsInline = true;
       video.removeAttribute('crossorigin');
       video.load();
       if (autoPlay) doPlay();
     }
+  };
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !url) return;
+
+    setStatus('loading');
+    setErrorMsg('');
+    retriedWithProxy.current = false;
+
+    loadStream(url, video);
 
     return () => {
       if (hlsRef.current) {
@@ -132,7 +145,7 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
       video.pause();
       video.src = '';
     };
-  }, [url]);
+  }, [url]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync muted state whenever it changes — regardless of play status
   useEffect(() => {
