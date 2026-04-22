@@ -181,6 +181,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
     if (loadedUrl.current === activeTrackUrl) return;
 
+    console.log('[NDR] loading URL into audio element:', activeTrackUrl);
     loadedUrl.current = activeTrackUrl;
     retryRef.current = false;
     setError('');
@@ -236,7 +237,7 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     if (!audio) return;
 
     if (forcePlaying && loadedUrl.current && audio.paused) {
-      // URL already loaded — just play it
+      console.log('[NDR] forcePlaying=true, attempting auto-play, src:', audio.src, '| readyState:', audio.readyState);
       setLoading(true);
       audio.play().catch((err: DOMException) => {
         setLoading(false);
@@ -283,15 +284,12 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
     }
 
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio) { console.error('[NDR] audioRef is null'); return; }
 
-    if (playing) {
-      audio.pause();
-      return;
-    }
+    if (playing) { audio.pause(); return; }
 
-    // Resolve the best available URL — all synchronous (localStorage is sync)
     const url = loadedUrl.current || activeTrackUrl || dbService.getLiveStreamUrl() || null;
+    console.log('[NDR] tap play — loadedUrl:', loadedUrl.current, '| activeTrackUrl:', activeTrackUrl, '| dbStream:', dbService.getLiveStreamUrl(), '| resolved:', url);
 
     if (!url) {
       setError('No stream available — admin needs to start playing');
@@ -299,8 +297,8 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       return;
     }
 
-    // If we have a URL that isn't loaded yet, load it now
     if (loadedUrl.current !== url) {
+      console.log('[NDR] loading new URL:', url);
       loadedUrl.current = url;
       hlsRef.current?.destroy();
       hlsRef.current = null;
@@ -317,10 +315,11 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
       }
     }
 
-    // Synchronous play() — required for iOS/Android gesture compliance
+    console.log('[NDR] calling audio.play(), src:', audio.src, '| readyState:', audio.readyState);
     setLoading(true);
     setError('');
     audio.play().catch((err: DOMException) => {
+      console.error('[NDR] play() failed:', err.name, err.message);
       setLoading(false);
       if (err.name === 'NotAllowedError') {
         setError('Tap ▶ to play');
