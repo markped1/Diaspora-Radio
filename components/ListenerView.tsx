@@ -18,7 +18,57 @@ interface ListenerViewProps {
   onPlayTrack: (track: MediaFile) => void;
 }
 
-// Memoized TV screen — only re-renders when currentAd or tvAudioOn or isRadioPlaying changes
+// ─── Smart URL detector ──────────────────────────────────────────────────────
+
+function detectVideoFormat(url: string): 'hls' | 'youtube' | 'dailymotion' | 'twitch' | 'vimeo' | 'facebook' | 'mp4' | 'iframe' | 'image' {
+  if (!url) return 'iframe';
+  const u = url.toLowerCase();
+  if (u.includes('.m3u8')) return 'hls';
+  if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
+  if (u.includes('dailymotion.com')) return 'dailymotion';
+  if (u.includes('twitch.tv')) return 'twitch';
+  if (u.includes('vimeo.com')) return 'vimeo';
+  if (u.includes('facebook.com') || u.includes('fb.watch')) return 'facebook';
+  if (u.match(/\.(mp4|webm|ogg|mov)(\?|$)/)) return 'mp4';
+  if (u.match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/)) return 'image';
+  return 'iframe'; // yallalive, sporticos, etc — try as iframe
+}
+
+function toEmbedUrl(url: string, format: string): string {
+  if (format === 'youtube') {
+    // Already an embed URL
+    if (url.includes('youtube.com/embed')) return url;
+    // Extract video ID
+    const match = url.match(/(?:v=|youtu\.be\/|embed\/|live\/)([a-zA-Z0-9_-]{11})/);
+    if (match) return `https://www.youtube.com/embed/${match[1]}?autoplay=1&mute=0&rel=0`;
+    // Channel URL — try live embed
+    const chMatch = url.match(/youtube\.com\/@([a-zA-Z0-9_-]+)/);
+    if (chMatch) return `https://www.youtube.com/embed/live_stream?channel=${chMatch[1]}&autoplay=1`;
+    return url;
+  }
+  if (format === 'dailymotion') {
+    const match = url.match(/dailymotion\.com\/(?:video\/|embed\/video\/)([a-zA-Z0-9]+)/);
+    if (match) return `https://www.dailymotion.com/embed/video/${match[1]}?autoplay=1&mute=0`;
+    return url;
+  }
+  if (format === 'twitch') {
+    const channelMatch = url.match(/twitch\.tv\/([a-zA-Z0-9_]+)/);
+    if (channelMatch) return `https://player.twitch.tv/?channel=${channelMatch[1]}&parent=${window.location.hostname}&autoplay=true&muted=false`;
+    return url;
+  }
+  if (format === 'vimeo') {
+    const match = url.match(/vimeo\.com\/(\d+)/);
+    if (match) return `https://player.vimeo.com/video/${match[1]}?autoplay=1&muted=0`;
+    return url;
+  }
+  if (format === 'facebook') {
+    return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&autoplay=true&allowfullscreen=true`;
+  }
+  return url;
+}
+
+// ─── Memoized TV screen — auto-detects format and picks the right player ─────
+
 const TvScreen = memo(({ currentAd, tvAudioOn, isRadioPlaying, nextAd }: {
   currentAd: MediaFile | null;
   tvAudioOn: boolean;
@@ -28,7 +78,21 @@ const TvScreen = memo(({ currentAd, tvAudioOn, isRadioPlaying, nextAd }: {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const tvHasAudio = tvAudioOn && !isRadioPlaying;
 
-  // Control YouTube iframe volume via postMessage — no remount needed
+  // Detect format — use stored type first, then auto-detect from URL
+  const format = useMemo(() => {
+    if (!currentAd) return 'iframe';
+    if (currentAd.type === 'iptv') return 'hls';
+    if (currentAd.type === 'image') return 'image';
+    // Auto-detect from URL regardless of stored type
+    return detectVideoFormat(currentAd.url);
+  }, [currentAd?.url, currentAd?.type]);
+
+  const embedUrl = useMemo(() => {
+    if (!currentAd) return '';
+    return toEmbedUrl(currentAd.url, format);
+  }, [currentAd?.url, format]);
+
+  // Control iframe volume via postMessage (YouTube, Dailymotion, Vimeo)
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -36,8 +100,10 @@ const TvScreen = memo(({ currentAd, tvAudioOn, isRadioPlaying, nextAd }: {
       if (tvHasAudio) {
         iframe.contentWindow?.postMessage('{"event":"command","func":"unMute","args":""}', '*');
         iframe.contentWindow?.postMessage('{"event":"command","func":"setVolume","args":[100]}', '*');
+        iframe.contentWindow?.postMessage(JSON.stringify({ method: 'setVolume', value: 1 }), '*');
       } else {
         iframe.contentWindow?.postMessage('{"event":"command","func":"mute","args":""}', '*');
+        iframe.contentWindow?.postMessage(JSON.stringify({ method: 'setVolume', value: 0 }), '*');
       }
     } catch { /* cross-origin — ignore */ }
   }, [tvHasAudio]);
@@ -50,45 +116,50 @@ const TvScreen = memo(({ currentAd, tvAudioOn, isRadioPlaying, nextAd }: {
       </div>
     );
   }
-  if (currentAd.type === 'image') {
-    return <img src={currentAd.url} className="w-full h-full object-cover" alt="ad" />;
-  }
-  if (currentAd.type === 'iptv') {
+
+  // ── HLS / IPTV ──
+  if (format === 'hls') {
     return <IptvPlayer url={currentAd.url} muted={!tvHasAudio} autoPlay className="w-full h-full object-contain" />;
   }
-  if (currentAd.type === 'youtube' && currentAd.url.includes('youtube.com/embed')) {
-    // Add enablejsapi=1 so postMessage mute/unmute works
-    const src = (() => {
-      const base = currentAd.url.includes('?')
-        ? currentAd.url + '&enablejsapi=1'
-        : currentAd.url + '?enablejsapi=1';
-      return base;
-    })();
+
+  // ── Image ──
+  if (format === 'image') {
+    return <img src={currentAd.url} className="w-full h-full object-cover" alt={currentAd.name} />;
+  }
+
+  // ── Direct MP4/WebM ──
+  if (format === 'mp4') {
     return (
-      <iframe
-        ref={iframeRef}
+      <video
         key={currentAd.id}
-        src={src}
-        className="w-full h-full"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen
-        title={currentAd.name}
+        src={currentAd.url}
+        className="w-full h-full object-contain"
+        autoPlay
+        muted={!tvHasAudio}
+        playsInline
+        controls={false}
+        onEnded={nextAd}
       />
     );
   }
-  if (currentAd.type === 'youtube') {
-    return (
-      <div className="w-full h-full bg-gray-900 flex flex-col items-center justify-center space-y-3 p-4">
-        <span className="text-4xl">⚽</span>
-        <p className="text-[8px] font-black text-white uppercase text-center">Live Match Available</p>
-        <button onClick={() => window.open(currentAd.url, '_blank')}
-          className="bg-red-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center space-x-2">
-          <i className="fas fa-play text-sm"></i><span>Watch Live Match</span>
-        </button>
-      </div>
-    );
-  }
-  return <SponsoredVideo video={currentAd} onEnded={nextAd} isMutedByRadio={isRadioPlaying} />;
+
+  // ── All iframe-based players: YouTube, Dailymotion, Twitch, Vimeo, Facebook, generic ──
+  const iframeSrc = embedUrl.includes('?')
+    ? format === 'youtube' ? embedUrl + '&enablejsapi=1' : embedUrl
+    : format === 'youtube' ? embedUrl + '?enablejsapi=1' : embedUrl;
+
+  return (
+    <iframe
+      ref={iframeRef}
+      key={currentAd.id}
+      src={iframeSrc}
+      className="w-full h-full"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+      allowFullScreen
+      title={currentAd.name}
+      sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+    />
+  );
 });
 
 const ListenerView: React.FC<ListenerViewProps> = ({ 
