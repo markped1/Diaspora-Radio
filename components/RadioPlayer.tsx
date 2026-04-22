@@ -288,12 +288,44 @@ const RadioPlayer: React.FC<RadioPlayerProps> = ({
 
     if (playing) { audio.pause(); return; }
 
+    console.log('[NDR] tap play — loadedUrl:', loadedUrl.current, '| activeTrackUrl:', activeTrackUrl, '| dbStream:', dbService.getLiveStreamUrl(), '| resolved:', loadedUrl.current || activeTrackUrl || dbService.getLiveStreamUrl() || null);
+
     const url = loadedUrl.current || activeTrackUrl || dbService.getLiveStreamUrl() || null;
-    console.log('[NDR] tap play — loadedUrl:', loadedUrl.current, '| activeTrackUrl:', activeTrackUrl, '| dbStream:', dbService.getLiveStreamUrl(), '| resolved:', url);
 
     if (!url) {
-      setError('No stream available — admin needs to start playing');
-      setTimeout(() => setError(''), 5000);
+      // Nothing cached yet — fetch from Supabase right now
+      // We can't call play() after an await (iOS gesture chain breaks)
+      // So: set src first with a known fallback, then fetch and update
+      setLoading(true);
+      setError('');
+      import('../services/apiService').then(({ getLiveState }) => {
+        getLiveState().then(live => {
+          const liveUrl = live?.track?.url || live?.stream;
+          if (liveUrl?.startsWith('http') && audioRef.current) {
+            loadedUrl.current = liveUrl;
+            applyCrossOrigin(audioRef.current, liveUrl);
+            audioRef.current.src = liveUrl;
+            audioRef.current.load();
+            audioRef.current.play().catch((err: DOMException) => {
+              setLoading(false);
+              if (err.name === 'NotAllowedError') {
+                setError('Tap ▶ to play');
+              } else if (err.name !== 'AbortError') {
+                setError(err.message || 'Playback failed');
+              }
+              setTimeout(() => setError(''), 5000);
+            });
+          } else {
+            setLoading(false);
+            setError('No stream available — admin needs to start playing');
+            setTimeout(() => setError(''), 5000);
+          }
+        }).catch(() => {
+          setLoading(false);
+          setError('Connection error — try again');
+          setTimeout(() => setError(''), 4000);
+        });
+      });
       return;
     }
 
