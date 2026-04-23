@@ -49,6 +49,8 @@ export interface ListenerReport {
   location: string;
   content: string;
   timestamp: number;
+  videoUrl?: string;   // optional Cloudinary video URL
+  videoType?: 'upload' | 'youtube'; // how the video was submitted
 }
 
 export interface SocialLink {

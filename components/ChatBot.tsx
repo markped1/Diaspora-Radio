@@ -71,10 +71,11 @@ HOW TO LISTEN TO THE RADIO:
 ═══════════════════════════════════════════
 HOW TO SEND A MESSAGE TO THE CHANNEL / ADMIN:
 ═══════════════════════════════════════════
-Listeners CANNOT send direct messages to the admin. However, you can:
-1. SUBMIT A COMMUNITY REPORT: Scroll down on the listener screen to "Journalist HQ". Tap "Report Happenings in your City", type your message or report, and tap "Broadcast Report". Your report goes live on the station feed and the admin can see it in the Inbox tab.
-2. This is the ONLY way listeners can communicate with the station — through community reports.
-3. There is no private messaging, email form, or chat with admin feature.
+Listeners CANNOT send private messages to the admin. However, you can:
+1. SUBMIT A COMMUNITY REPORT (TEXT): Scroll down to "Journalist HQ", tap "Report Happenings in your City", type your message, and tap "Broadcast Report".
+2. SUBMIT A VIDEO REPORT: In the same Journalist HQ form, tap "Upload Video" to attach a video from your device, OR tap "YouTube Link" to paste a video URL. Then submit.
+3. Your report (with or without video) goes live on the station feed and the admin sees it in the Inbox tab.
+4. There is NO private messaging or email form — community reports are the only way to reach the station.
 
 ═══════════════════════════════════════════
 HOW TO WATCH NDR TV:
@@ -87,15 +88,25 @@ HOW TO WATCH NDR TV:
 6. TV and radio are independent — you can watch TV while radio plays (TV will be muted automatically when radio is on)
 
 ═══════════════════════════════════════════
-HOW TO SUBMIT A COMMUNITY REPORT:
+HOW TO SUBMIT A COMMUNITY REPORT (TEXT OR VIDEO):
 ═══════════════════════════════════════════
 1. Scroll down on the listener screen
 2. Find the "Journalist HQ" section
 3. Tap "Report Happenings in your City"
-4. Type what is happening near you — news, events, anything relevant
-5. Tap "Broadcast Report" to submit
-6. Your report appears in the Live Community Reports feed for all listeners to see
-7. The admin can also read all reports in the Inbox tab
+4. Enter your name (optional)
+5. Type what is happening near you
+6. OPTIONALLY ADD A VIDEO:
+   - Tap "Upload Video" to record or select a video from your phone/device
+   - OR tap "YouTube Link" to paste a YouTube or video URL
+7. Tap "Broadcast Report" to submit
+8. Your report (with video if attached) appears in the Live Community Reports feed
+9. The admin sees all reports including videos in the Inbox tab
+
+VIDEO REPORTS:
+- Listeners can submit video evidence, eyewitness footage, or video messages
+- Supported: phone camera videos, recorded clips, YouTube links
+- Videos are uploaded to cloud storage automatically
+- Admin can watch submitted videos directly in the Inbox
 
 ═══════════════════════════════════════════
 HOW TO DOWNLOAD THE APP:
@@ -149,7 +160,8 @@ WHAT LISTENERS CAN AND CANNOT DO:
 LISTENERS CAN:
 ✅ Listen to live radio (tap play)
 ✅ Watch live TV (whatever admin pushes)
-✅ Submit community reports from their city
+✅ Submit text community reports from their city
+✅ Submit VIDEO reports — upload a video or paste a YouTube link
 ✅ Share the station link with friends (Invite Friends button)
 ✅ Download the Android app
 ✅ Ask this chatbot questions

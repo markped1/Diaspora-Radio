@@ -173,7 +173,12 @@ const ListenerView: React.FC<ListenerViewProps> = ({
   const [location, setLocation] = useState<string>('Syncing...');
   const [localTime, setLocalTime] = useState<string>('');
   const [reportText, setReportText] = useState('');
+  const [reportName, setReportName] = useState('');
+  const [reportVideo, setReportVideo] = useState<File | null>(null);
+  const [reportYouTube, setReportYouTube] = useState('');
+  const [reportUploading, setReportUploading] = useState(false);
   const [isReporting, setIsReporting] = useState(false);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const [adIndex, setAdIndex] = useState(0);
   const [shareFeedback, setShareFeedback] = useState('');
   const [tvAudioOn, setTvAudioOn] = useState(false);
@@ -241,12 +246,45 @@ const ListenerView: React.FC<ListenerViewProps> = ({
 
   const handleReport = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reportText.trim()) return;
+    if (!reportText.trim() && !reportVideo && !reportYouTube.trim()) return;
+    setReportUploading(true);
+
+    let videoUrl: string | undefined;
+    let videoType: 'upload' | 'youtube' | undefined;
+
+    // Upload video to Cloudinary if provided
+    if (reportVideo) {
+      try {
+        const cloudName = (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME;
+        const uploadPreset = (import.meta as any).env?.VITE_CLOUDINARY_UPLOAD_PRESET;
+        if (cloudName && uploadPreset) {
+          const form = new FormData();
+          form.append('file', reportVideo);
+          form.append('upload_preset', uploadPreset);
+          const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, {
+            method: 'POST', body: form, signal: AbortSignal.timeout(60000),
+          });
+          const data = await res.json();
+          if (data.secure_url) { videoUrl = data.secure_url; videoType = 'upload'; }
+        }
+      } catch { /* upload failed — submit text only */ }
+    } else if (reportYouTube.trim()) {
+      videoUrl = reportYouTube.trim();
+      videoType = 'youtube';
+    }
+
     await dbService.addReport({
       id: Math.random().toString(36).substring(2, 9),
-      reporterName: 'Listener', location, content: reportText, timestamp: Date.now()
+      reporterName: reportName.trim() || 'Listener',
+      location,
+      content: reportText.trim() || (videoUrl ? 'Video report' : ''),
+      timestamp: Date.now(),
+      videoUrl,
+      videoType,
     });
-    setReportText(''); setIsReporting(false);
+
+    setReportText(''); setReportName(''); setReportVideo(null); setReportYouTube('');
+    setIsReporting(false); setReportUploading(false);
     setShareFeedback('Report Sent!');
     setTimeout(() => setShareFeedback(''), 3000);
   };
@@ -435,25 +473,67 @@ const ListenerView: React.FC<ListenerViewProps> = ({
         <h3 className="text-[7px] font-black uppercase text-green-600/40 tracking-[0.2em] px-1">Journalist HQ</h3>
         <div className="p-3 rounded-2xl border border-dashed border-green-200 bg-white/60 shadow-sm">
           {!isReporting ? (
-            <button 
-              onClick={() => setIsReporting(true)} 
+            <button
+              onClick={() => setIsReporting(true)}
               className="w-full py-2.5 text-[7px] font-black text-[#008751] uppercase tracking-widest flex items-center justify-center bg-white rounded-xl border border-green-50 shadow-sm active:scale-95 transition-all"
             >
               <i className="fas fa-microphone-alt mr-2 text-red-500"></i> Report Happenings in your City
             </button>
           ) : (
             <form onSubmit={handleReport} className="space-y-2 animate-scale-in">
-              <textarea 
-                value={reportText} 
-                onChange={(e) => setReportText(e.target.value)} 
-                placeholder="Briefly describe what's happening near you..." 
-                className="w-full bg-green-50 border border-green-100 rounded-xl p-3 text-[9px] h-20 outline-none focus:border-green-400 font-medium resize-none shadow-inner" 
+              <input
+                type="text"
+                value={reportName}
+                onChange={e => setReportName(e.target.value)}
+                placeholder="Your name (optional)"
+                className="w-full bg-green-50 border border-green-100 rounded-xl px-3 py-2 text-[9px] outline-none focus:border-green-400 font-medium"
               />
+              <textarea
+                value={reportText}
+                onChange={e => setReportText(e.target.value)}
+                placeholder="Describe what's happening near you..."
+                className="w-full bg-green-50 border border-green-100 rounded-xl p-3 text-[9px] h-16 outline-none focus:border-green-400 font-medium resize-none shadow-inner"
+              />
+
+              {/* Video options */}
+              <div className="space-y-1.5">
+                <p className="text-[6px] font-black uppercase text-gray-400 tracking-widest">Add Video (optional)</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {/* Upload video */}
+                  <button type="button"
+                    onClick={() => videoInputRef.current?.click()}
+                    className={`flex items-center justify-center space-x-1 py-2 rounded-xl border text-[7px] font-black uppercase transition-all ${reportVideo ? 'bg-green-100 border-green-400 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'}`}>
+                    <i className="fas fa-video text-[8px]"></i>
+                    <span>{reportVideo ? '✓ Video ready' : 'Upload Video'}</span>
+                  </button>
+                  {/* YouTube link */}
+                  <button type="button"
+                    onClick={() => { const url = prompt('Paste YouTube or video URL:'); if (url) setReportYouTube(url); }}
+                    className={`flex items-center justify-center space-x-1 py-2 rounded-xl border text-[7px] font-black uppercase transition-all ${reportYouTube ? 'bg-red-100 border-red-400 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'}`}>
+                    <i className="fab fa-youtube text-[8px]"></i>
+                    <span>{reportYouTube ? '✓ Link added' : 'YouTube Link'}</span>
+                  </button>
+                </div>
+                {(reportVideo || reportYouTube) && (
+                  <button type="button" onClick={() => { setReportVideo(null); setReportYouTube(''); }}
+                    className="text-[6px] text-red-400 font-black uppercase">
+                    ✕ Remove video
+                  </button>
+                )}
+                <input ref={videoInputRef} type="file" accept="video/*" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) setReportVideo(f); }} />
+              </div>
+
               <div className="flex space-x-2">
-                <button type="submit" className="flex-1 bg-[#008751] text-white py-2.5 rounded-xl font-black text-[7px] uppercase tracking-widest shadow-md active:scale-95 transition-all">
-                  Broadcast Report
+                <button type="submit"
+                  disabled={reportUploading || (!reportText.trim() && !reportVideo && !reportYouTube.trim())}
+                  className="flex-1 bg-[#008751] text-white py-2.5 rounded-xl font-black text-[7px] uppercase tracking-widest shadow-md active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center space-x-1">
+                  {reportUploading
+                    ? <><i className="fas fa-circle-notch fa-spin text-[8px]"></i><span>Sending...</span></>
+                    : <><i className="fas fa-broadcast-tower text-[8px]"></i><span>Broadcast Report</span></>}
                 </button>
-                <button type="button" onClick={() => setIsReporting(false)} className="px-5 bg-white text-green-700 py-2.5 rounded-xl text-[7px] font-black border border-green-100 active:scale-95 transition-all">
+                <button type="button" onClick={() => { setIsReporting(false); setReportVideo(null); setReportYouTube(''); }}
+                  className="px-5 bg-white text-green-700 py-2.5 rounded-xl text-[7px] font-black border border-green-100 active:scale-95 transition-all">
                   Cancel
                 </button>
               </div>

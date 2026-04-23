@@ -878,6 +878,72 @@ const AdminView: React.FC<AdminViewProps> = ({
         <AnalyticsDashboard />
       )}
 
+      {activeTab === 'inbox' && (
+        <div className="space-y-3">
+          <div className="bg-gray-900 px-4 py-3 rounded-xl flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-black text-white uppercase tracking-wide">Journalist Inbox</h2>
+              <p className="text-[7px] text-gray-400 uppercase tracking-widest mt-0.5">{reports.length} reports from listeners</p>
+            </div>
+            <i className="fas fa-inbox text-gray-400 text-lg" />
+          </div>
+          {reports.length === 0 ? (
+            <div className="bg-gray-50 rounded-2xl border border-dashed border-gray-200 p-10 text-center">
+              <i className="fas fa-inbox text-3xl text-gray-200 mb-2 block" />
+              <p className="text-[8px] font-black uppercase text-gray-400">No reports yet</p>
+              <p className="text-[7px] text-gray-300 mt-1">Listener reports will appear here</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {reports.map(r => (
+                <div key={r.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-7 h-7 bg-[#008751]/10 rounded-full flex items-center justify-center">
+                        <i className="fas fa-user text-[#008751] text-[8px]" />
+                      </div>
+                      <div>
+                        <p className="text-[8px] font-black text-gray-800">{r.reporterName || 'Listener'}</p>
+                        <p className="text-[6px] text-gray-400 flex items-center space-x-1">
+                          <i className="fas fa-map-marker-alt text-red-400 text-[6px]" />
+                          <span>{r.location}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[6px] text-gray-400 font-mono">
+                      {new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  {r.content && <p className="text-[9px] text-gray-700 leading-relaxed">"{r.content}"</p>}
+                  {/* Video report */}
+                  {r.videoUrl && r.videoType === 'upload' && (
+                    <div className="rounded-xl overflow-hidden border border-gray-100 bg-black" style={{ height: '160px' }}>
+                      <video src={r.videoUrl} controls className="w-full h-full object-contain" playsInline />
+                    </div>
+                  )}
+                  {r.videoUrl && r.videoType === 'youtube' && (
+                    <div className="rounded-xl overflow-hidden border border-gray-100">
+                      <a href={r.videoUrl} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center space-x-2 p-3 bg-red-50 hover:bg-red-100 transition-colors">
+                        <i className="fab fa-youtube text-red-500 text-lg" />
+                        <span className="text-[8px] font-black text-red-700 truncate">{r.videoUrl}</span>
+                        <i className="fas fa-external-link-alt text-red-400 text-[7px] shrink-0" />
+                      </a>
+                    </div>
+                  )}
+                  {r.videoUrl && (
+                    <span className="inline-flex items-center space-x-1 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+                      <i className="fas fa-video text-green-500 text-[6px]" />
+                      <span className="text-[6px] font-black text-green-700 uppercase">Video Report</span>
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {activeTab === 'logs' && (
         <div className="bg-white rounded-xl border border-green-50 p-2 max-h-[300px] overflow-y-auto font-mono text-[7px]">
           {logs.map(log => (
