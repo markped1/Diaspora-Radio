@@ -8,6 +8,43 @@ interface Message {
   time: string;
 }
 
+// ─── Rule-based fallback when Gemini is unavailable ──────────────────────────
+function getRuleBasedReply(input: string): string {
+  const q = input.toLowerCase();
+
+  if (q.match(/listen|play|radio|tune|hear/))
+    return `To listen to NDR Radio:\n1. Tap the ▶ play button at the top of the screen\n2. The station will start streaming automatically\n3. Admin must be playing for the stream to be live\n\nYou can also download our Android app from the footer!`;
+
+  if (q.match(/tv|television|channel|watch|video|iptv/))
+    return `NDR TV streams live channels including:\n🌍 DW Africa, Al Jazeera, France 24, CGTN\n⚽ Abu Dhabi Sports, Dubai Sports, TRT Spor\n🎬 FilmRise Movies, TRT Belgesel\n🚀 NASA TV, NHK World Japan\n\nAdmin pushes channels live from the TV Studio tab.`;
+
+  if (q.match(/news|bulletin|headline|broadcast/))
+    return `NDR broadcasts news bulletins:\n• Full bulletin at the top of every hour (:00)\n• Headlines at :30 past every hour\n• No news midnight–6am (music only)\n\nNews comes from Premium Times, Punch, BBC Africa, Al Jazeera, Channels TV, and more.`;
+
+  if (q.match(/download|app|android|apk|install/))
+    return `Download the NDR Android app:\n👉 Scroll to the bottom of the page and tap "Download for Android"\n\nOr visit: github.com/markped1/Diaspora-Radio/releases/latest/download/app-debug.apk\n\niOS version coming soon!`;
+
+  if (q.match(/admin|password|login|manage/))
+    return `The Admin panel is password-protected. Tap "Admin Login" in the top-right corner.\n\nAdmin features include:\n• Command Center (play/stop music)\n• TV Studio (push live channels)\n• Newsroom (fetch & broadcast news)\n• Genre Manager (schedule music by genre)\n• Analytics (live listener stats)\n• Media Library (upload tracks)`;
+
+  if (q.match(/genre|afrobeats|amapiano|rnb|gospel|schedule|playlist/))
+    return `NDR has genre folders with scheduled time slots:\n🎵 Afrobeats — 12pm–8pm daily\n🎹 Amapiano — 8pm–midnight (Fri/Sat)\n🎤 R&B — 10pm–2am daily\n🙏 Gospel — 6am–10am Sundays\n🎧 Hip-Hop — 6pm–10pm daily\n🌿 Reggae — 2pm–6pm daily\n\nAdmin assigns tracks to genres in the Genre tab.`;
+
+  if (q.match(/report|journalist|community|city/))
+    return `You can submit live community reports!\nScroll down to "Journalist HQ" and tap "Report Happenings in your City".\n\nYour report will appear in the Live Community Reports feed for all listeners to see.`;
+
+  if (q.match(/contact|support|help|problem|issue/))
+    return `For support with NDR:\n• Use this chat for quick questions\n• Submit a community report for feedback\n• The station is designed by Thompson Obosa\n\nFor technical issues, try refreshing the page or clearing your browser cache.`;
+
+  if (q.match(/who|what is|about|station|ndr/))
+    return `${APP_NAME} — ${STATION_TAGLINE}\n\nWe are the voice of Nigerians abroad, broadcasting live radio, TV, and news 24/7 to the Nigerian diaspora worldwide — UK, USA, Canada, Australia, Europe, Middle East, and beyond.\n\nDesigned by Thompson Obosa.`;
+
+  if (q.match(/nigeria|lagos|abuja|naija/))
+    return `NDR covers all things Nigerian:\n🇳🇬 Breaking news from Nigeria\n🌍 Diaspora stories worldwide\n⚽ Nigerian sports (Super Eagles, AFCON)\n🎵 Nigerian music (Afrobeats, Amapiano, Highlife)\n📺 African TV channels\n\nWe are your connection to home, wherever you are!`;
+
+  return `I'm NDR Assistant! I can help you with:\n• How to listen to the radio\n• Available TV channels\n• News bulletin schedule\n• Downloading the app\n• Admin features\n• Genre music scheduling\n\nWhat would you like to know?`;
+}
+
 const SYSTEM_CONTEXT = `You are NDR Assistant, the official AI helper for ${APP_NAME} — ${STATION_TAGLINE}.
 
 ABOUT THE STATION:
@@ -99,9 +136,11 @@ const ChatBot: React.FC = () => {
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }]);
     } catch {
+      // Fallback: rule-based responses when Gemini is unavailable
+      const reply = getRuleBasedReply(text);
       setMessages(prev => [...prev, {
         role: 'bot',
-        text: 'I\'m having trouble connecting right now. Please check that the Gemini API key is configured in settings.',
+        text: reply,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }]);
     } finally {
