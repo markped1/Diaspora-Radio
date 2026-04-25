@@ -161,11 +161,13 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
     }
 
     setLoadStatus('Fetching through proxy...');
-    // Use Cloudflare page proxy (?page=) which strips X-Frame-Options
+    // Use Cloudflare page proxy (/page/<url>) which strips X-Frame-Options
     const cfProxy = (import.meta as any).env?.VITE_PROXY_URL || '';
     let proxied: string;
     if (cfProxy) {
-      proxied = `${cfProxy}?page=${encodeURIComponent(url)}`;
+      // Use path-based routing to avoid Cloudflare stripping query params
+      const base = cfProxy.endsWith('/') ? cfProxy.slice(0, -1) : cfProxy;
+      proxied = `${base}/page/${encodeURIComponent(url)}`;
       setProxyName('Cloudflare');
     } else {
       const result = await findWorkingProxy(url);

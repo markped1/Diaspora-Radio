@@ -26,18 +26,28 @@ async function handleRequest(request) {
   }
 
   const rawUrl = request.url;
-  const qIndex = rawUrl.indexOf('?');
-  const params = qIndex !== -1 ? new URLSearchParams(rawUrl.substring(qIndex + 1)) : new URLSearchParams();
+  const urlObj = new URL(rawUrl);
+  const pathname = urlObj.pathname; // e.g. /page/https://daddyhd.com or /url/https://stream.m3u8
 
-  // Also try direct string search as fallback
-  const streamTarget = params.get('url') || (() => {
-    const i = rawUrl.indexOf('?url=');
-    return i !== -1 ? decodeURIComponent(rawUrl.substring(i + 5).split('&')[0]) : null;
-  })();
-  const pageTarget = params.get('page') || (() => {
-    const i = rawUrl.indexOf('?page=');
-    return i !== -1 ? decodeURIComponent(rawUrl.substring(i + 6).split('&')[0]) : null;
-  })();
+  // Support path-based routing: /page/<target> or /url/<target>
+  let streamTarget = null;
+  let pageTarget = null;
+
+  if (pathname.startsWith('/page/')) {
+    pageTarget = decodeURIComponent(pathname.substring(6));
+  } else if (pathname.startsWith('/url/')) {
+    streamTarget = decodeURIComponent(pathname.substring(5));
+  } else {
+    // Fallback: query string (for backward compat)
+    const qIndex = rawUrl.indexOf('?');
+    if (qIndex !== -1) {
+      const qs = rawUrl.substring(qIndex + 1);
+      const urlIdx = qs.indexOf('url=');
+      const pageIdx = qs.indexOf('page=');
+      if (pageIdx !== -1) pageTarget = decodeURIComponent(qs.substring(pageIdx + 5).split('&')[0]);
+      else if (urlIdx !== -1) streamTarget = decodeURIComponent(qs.substring(urlIdx + 4).split('&')[0]);
+    }
+  }
 
   // ── No target — health check ──────────────────────────────────────────────
   if (!streamTarget && !pageTarget) {
