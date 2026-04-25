@@ -598,6 +598,61 @@ const AdminView: React.FC<AdminViewProps> = ({
           }} />
 
           <TvMonitor mediaList={mediaList} onMediaUpdated={async () => { await loadData(); onRefreshData(); }} />
+
+          {/* ── FREE MOVIES & STREAMING SITES ── */}
+          <div className="bg-gray-900 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center space-x-2">
+              <i className="fas fa-film text-purple-400 text-sm"></i>
+              <h3 className="text-[8px] font-black uppercase tracking-widest text-purple-300">Free Movies & Streaming</h3>
+            </div>
+            <p className="text-[6px] text-gray-400">Tap any site to load it in the Quick Stream box, then push live to all viewers.</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { name: 'Stremio Web',      url: 'https://web.stremio.com',                    emoji: '🎬', desc: 'Movies & Series' },
+                { name: 'Pluto TV',         url: 'https://pluto.tv',                           emoji: '📺', desc: 'Free live TV & movies' },
+                { name: 'Tubi',             url: 'https://tubitv.com',                         emoji: '🎥', desc: 'Free movies & shows' },
+                { name: 'Crackle',          url: 'https://www.crackle.com',                    emoji: '🍿', desc: 'Free Hollywood movies' },
+                { name: 'Plex',             url: 'https://watch.plex.tv/live-tv',              emoji: '▶️', desc: 'Free live TV & movies' },
+                { name: 'Kanopy',           url: 'https://www.kanopy.com',                     emoji: '🎭', desc: 'Free with library card' },
+                { name: 'Nollywood Films',  url: 'https://www.youtube.com/@NollywoodPictures/videos', emoji: '🇳🇬', desc: 'Nigerian movies on YouTube' },
+                { name: 'African Films',    url: 'https://www.youtube.com/@AfricanMoviesTV/videos',   emoji: '🌍', desc: 'African movies on YouTube' },
+                { name: 'FilmRise',         url: 'https://www.filmrise.com',                   emoji: '🎞️', desc: 'Free classic movies' },
+                { name: 'Popcornflix',      url: 'https://www.popcornflix.com',                emoji: '🍿', desc: 'Free movies & TV' },
+              ].map(site => (
+                <button
+                  key={site.url}
+                  onClick={() => {
+                    // Pre-fill the Quick Stream box
+                    setStatusMsg(`📺 ${site.name} loaded — tap "Push Live to TV" above`);
+                    setTimeout(() => setStatusMsg(''), 4000);
+                    // Push directly to TV
+                    const item = {
+                      id: 'movie-' + Date.now(),
+                      name: site.name,
+                      url: site.url,
+                      type: 'youtube' as const,
+                      timestamp: Date.now(),
+                      isLive: true,
+                    };
+                    dbService.addMedia(item).then(() => {
+                      if (hasApi()) {
+                        setLiveTv({ url: site.url, name: site.name, type: 'youtube', caption: site.desc, youtubeId: null } as any).catch(() => {});
+                      }
+                      loadData();
+                      onRefreshData();
+                    });
+                  }}
+                  className="bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl p-3 text-left transition-all active:scale-95 space-y-1"
+                >
+                  <div className="flex items-center space-x-2">
+                    <span className="text-lg">{site.emoji}</span>
+                    <p className="text-[8px] font-black text-white truncate">{site.name}</p>
+                  </div>
+                  <p className="text-[6px] text-gray-400">{site.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
