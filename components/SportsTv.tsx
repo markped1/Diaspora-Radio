@@ -97,15 +97,20 @@ interface SportsTvProps {
 }
 
 const BOOKMARKS = [
-  { name: 'Yalla Live',    url: 'https://yalla-live.cyou/schedule',    logo: '⚽' },
-  { name: 'Kora 24',       url: 'https://kora24.site88.one',           logo: '🎯' },
-  { name: 'HesGoal',       url: 'https://hesgoals.mov/schedule',       logo: '🥅' },
-  { name: 'DaddyLive',     url: 'https://daddylive.mp/schedule.php',   logo: '📺' },
-  { name: 'Sportsurge',    url: 'https://sportsurge.ws',               logo: '⚡' },
-  { name: 'Total Sportek', url: 'https://www.total-sportek.to',        logo: '🏆' },
-  { name: 'VIP League',    url: 'https://vipleague.im/football',       logo: '👑' },
-  { name: 'RonaTV',        url: 'https://www.ronatv.sbs',              logo: '🌍' },
-  { name: 'Footy100',      url: 'https://footy100.net',                logo: '🦶' },
+  // ── Yalla variants (multiple mirrors in case one is down) ─────────────────
+  { name: 'Yalla Live',     url: 'https://www.live-yalla.io',           logo: '⚽' },
+  { name: 'Yalla Shoot',    url: 'https://shoot-yalla.to',              logo: '🎯' },
+  { name: 'Yalla Shoot 2',  url: 'https://eshoot.org',                  logo: '🥅' },
+  // ── Other free football sites ─────────────────────────────────────────────
+  { name: 'DaddyLive',      url: 'https://daddylive.mp/schedule.php',   logo: '📺' },
+  { name: 'Sportsurge',     url: 'https://sportsurge.ws',               logo: '⚡' },
+  { name: 'Streamed',       url: 'https://streamed.su/category/football', logo: '🔴' },
+  { name: 'StreamEast',     url: 'https://streameast.app',              logo: '🌊' },
+  { name: 'Sporticos',      url: 'https://sporticos.com/en-gb',         logo: '🏆' },
+  { name: 'VIP League',     url: 'https://vipleague.im/football',       logo: '👑' },
+  { name: 'Total Sportek',  url: 'https://www.total-sportek.to',        logo: '📡' },
+  { name: 'FootyBite',      url: 'https://footybite.to',                logo: '🦶' },
+  { name: 'Hesgoal',        url: 'https://hesgoals.mov/schedule',       logo: '🥅' },
 ];
 
 const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
@@ -113,15 +118,15 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
   const retryCountRef = useRef(0);
   const blobUrlRef = useRef<string>(''); // track blob URLs to revoke them
 
-  const [targetUrl, setTargetUrl] = useState('https://yalla-live.cyou');
+  const [targetUrl, setTargetUrl] = useState('https://www.live-yalla.io');
   const [iframeSrc, setIframeSrc] = useState('');
-  const [addressBar, setAddressBar] = useState('https://yalla-live.cyou');
+  const [addressBar, setAddressBar] = useState('https://www.live-yalla.io');
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [proxyName, setProxyName] = useState('');
   const [retrying, setRetrying] = useState(false);
   const [loadStatus, setLoadStatus] = useState('');
-  const [history, setHistory] = useState<string[]>(['https://yalla-live.cyou']);
+  const [history, setHistory] = useState<string[]>(['https://www.live-yalla.io']);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [savedMatches, setSavedMatches] = useState<SportChannel[]>([]);
   const [saveLabel, setSaveLabel] = useState('');
@@ -190,7 +195,7 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
 
   // Initial load
   useEffect(() => {
-    loadUrl('https://yalla-live.cyou');
+    loadUrl('https://www.live-yalla.io');
   }, []);
 
   const goBack = () => {
