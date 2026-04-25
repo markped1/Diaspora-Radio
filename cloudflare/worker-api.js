@@ -52,12 +52,15 @@ async function handleRequest(request) {
       return new Response('Invalid URL', { status: 400, headers: CORS_HEADERS });
     }
     try {
+      const targetOrigin = new URL(pageTarget).origin;
+      const workerBase = rawUrl.split('?')[0];
+
       const upstream = await fetch(pageTarget, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.5',
-          'Referer': new URL(pageTarget).origin,
+          'Referer': targetOrigin,
         },
         redirect: 'follow',
       });
@@ -65,22 +68,36 @@ async function handleRequest(request) {
       const contentType = upstream.headers.get('content-type') || 'text/html';
       let body = await upstream.text();
 
-      // Rewrite absolute URLs to go through proxy
-      const origin = new URL(pageTarget).origin;
-      body = body
-        .replace(/href="\/(?!\/)/g, `href="${origin}/`)
-        .replace(/src="\/(?!\/)/g, `src="${origin}/`)
-        .replace(/action="\/(?!\/)/g, `action="${origin}/`);
+      // Inject a <base> tag so relative URLs resolve correctly against the target origin
+      // Also inject a script to intercept link clicks and route through proxy
+      const baseTag = `<base href="${targetOrigin}/">`;
+      const interceptScript = `<script>
+        (function(){
+          // Proxy all fetch/XHR requests
+          var proxyBase = '${workerBase}?page=';
+          // Override link clicks to stay in proxy
+          document.addEventListener('click', function(e){
+            var a = e.target.closest('a');
+            if(a && a.href && a.href.startsWith('http') && !a.href.includes('${workerBase}')){
+              e.preventDefault();
+              window.location.href = proxyBase + encodeURIComponent(a.href);
+            }
+          }, true);
+        })();
+      </script>`;
 
-      // Build clean response headers — strip all frame-blocking headers
-      const responseHeaders = {
-        ...CORS_HEADERS,
-        'Content-Type': contentType,
-        'Cache-Control': 'no-cache',
-        // Explicitly DO NOT set X-Frame-Options or CSP frame-ancestors
-      };
+      // Insert base tag and intercept script into <head>
+      body = body.replace(/<head([^>]*)>/i, `<head$1>${baseTag}${interceptScript}`);
 
-      return new Response(body, { status: upstream.status, headers: responseHeaders });
+      return new Response(body, {
+        status: upstream.status,
+        headers: {
+          ...CORS_HEADERS,
+          'Content-Type': contentType,
+          'Cache-Control': 'no-cache',
+          // No X-Frame-Options, no CSP — stripped intentionally
+        },
+      });
     } catch (err) {
       return new Response('Page proxy error: ' + err.message, {
         status: 502, headers: { ...CORS_HEADERS, 'Content-Type': 'text/plain' },
