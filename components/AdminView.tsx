@@ -608,16 +608,16 @@ const AdminView: React.FC<AdminViewProps> = ({
             <p className="text-[6px] text-gray-400">Tap any site to load it in the Quick Stream box, then push live to all viewers.</p>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { name: 'Stremio Web',      url: 'https://web.stremio.com',                    emoji: '🎬', desc: 'Movies & Series' },
-                { name: 'Pluto TV',         url: 'https://pluto.tv',                           emoji: '📺', desc: 'Free live TV & movies' },
-                { name: 'Tubi',             url: 'https://tubitv.com',                         emoji: '🎥', desc: 'Free movies & shows' },
-                { name: 'Crackle',          url: 'https://www.crackle.com',                    emoji: '🍿', desc: 'Free Hollywood movies' },
-                { name: 'Plex',             url: 'https://watch.plex.tv/live-tv',              emoji: '▶️', desc: 'Free live TV & movies' },
-                { name: 'Kanopy',           url: 'https://www.kanopy.com',                     emoji: '🎭', desc: 'Free with library card' },
-                { name: 'Nollywood Films',  url: 'https://www.youtube.com/@NollywoodPictures/videos', emoji: '🇳🇬', desc: 'Nigerian movies on YouTube' },
-                { name: 'African Films',    url: 'https://www.youtube.com/@AfricanMoviesTV/videos',   emoji: '🌍', desc: 'African movies on YouTube' },
-                { name: 'FilmRise',         url: 'https://www.filmrise.com',                   emoji: '🎞️', desc: 'Free classic movies' },
-                { name: 'Popcornflix',      url: 'https://www.popcornflix.com',                emoji: '🍿', desc: 'Free movies & TV' },
+                { name: 'Stremio Web',      url: 'https://web.stremio.com',                           emoji: '🎬', desc: 'Movies & Series' },
+                { name: 'Nkiri',            url: 'https://nkiri.lol',                                 emoji: '🇳🇬', desc: 'Nollywood & Asian dramas' },
+                { name: 'NetNaija',         url: 'https://netnaija.world',                            emoji: '🎥', desc: 'Nigerian movies & music' },
+                { name: '9jaRocks',         url: 'https://9jarocks.bitbucket.io',                     emoji: '🎭', desc: 'Nollywood & African series' },
+                { name: 'Nollywood YouTube', url: 'https://www.youtube.com/@NollywoodPictures/videos', emoji: '📺', desc: 'Free Nigerian movies' },
+                { name: 'African Films',    url: 'https://www.youtube.com/@AfricanMoviesTV/videos',   emoji: '🌍', desc: 'African cinema' },
+                { name: 'Pluto TV',         url: 'https://pluto.tv',                                  emoji: '📡', desc: 'Free live TV & movies' },
+                { name: 'Plex',             url: 'https://watch.plex.tv/live-tv',                     emoji: '▶️', desc: 'Free live TV & movies' },
+                { name: 'FilmRise',         url: 'https://www.filmrise.com',                          emoji: '🎞️', desc: 'Free classic movies' },
+                { name: 'Popcornflix',      url: 'https://www.popcornflix.com',                       emoji: '🍿', desc: 'Free movies & TV' },
               ].map(site => (
                 <button
                   key={site.url}
