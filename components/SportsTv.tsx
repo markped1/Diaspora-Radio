@@ -97,20 +97,20 @@ interface SportsTvProps {
 }
 
 const BOOKMARKS = [
-  // ── Yalla variants (multiple mirrors in case one is down) ─────────────────
-  { name: 'Yalla Live',     url: 'https://www.live-yalla.io',           logo: '⚽' },
-  { name: 'Yalla Shoot',    url: 'https://shoot-yalla.to',              logo: '🎯' },
-  { name: 'Yalla Shoot 2',  url: 'https://eshoot.org',                  logo: '🥅' },
-  // ── Other free football sites ─────────────────────────────────────────────
-  { name: 'DaddyLive',      url: 'https://daddylive.mp/schedule.php',   logo: '📺' },
-  { name: 'Sportsurge',     url: 'https://sportsurge.ws',               logo: '⚡' },
-  { name: 'Streamed',       url: 'https://streamed.su/category/football', logo: '🔴' },
-  { name: 'StreamEast',     url: 'https://streameast.app',              logo: '🌊' },
-  { name: 'Sporticos',      url: 'https://sporticos.com/en-gb',         logo: '🏆' },
-  { name: 'VIP League',     url: 'https://vipleague.im/football',       logo: '👑' },
-  { name: 'Total Sportek',  url: 'https://www.total-sportek.to',        logo: '📡' },
-  { name: 'FootyBite',      url: 'https://footybite.to',                logo: '🦶' },
-  { name: 'Hesgoal',        url: 'https://hesgoals.mov/schedule',       logo: '🥅' },
+  // ── Yalla variants ────────────────────────────────────────────────────────
+  { name: 'Yalla Live',     url: 'https://www.live-yalla.io',              logo: '⚽' },
+  { name: 'Yalla Shoot',    url: 'https://shoot-yalla.to',                 logo: '🎯' },
+  { name: 'Yalla Shoot 2',  url: 'https://eshoot.org',                     logo: '🥅' },
+  // ── Most reliable free football sites (2025/26) ───────────────────────────
+  { name: 'DaddyHD',        url: 'https://daddyhd.com',                    logo: '📺' },
+  { name: 'Streami',        url: 'https://streami.su/category/football',   logo: '🔴' },
+  { name: 'StreamEast',     url: 'https://v2.streameast.sk',               logo: '🌊' },
+  { name: 'Ronaldo7',       url: 'https://ronaldo7.soccer/soccer',         logo: '⭐' },
+  { name: 'Sportsurge',     url: 'https://sportsurge.ws',                  logo: '⚡' },
+  { name: 'VIP League',     url: 'https://vipleague.im/football',          logo: '👑' },
+  { name: 'Total Sportek',  url: 'https://www.total-sportek.to',           logo: '📡' },
+  { name: 'Sporticos',      url: 'https://sporticos.com/en-gb',            logo: '🏆' },
+  { name: 'Hesgoal',        url: 'https://hesgoals.mov/schedule',          logo: '🥅' },
 ];
 
 const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
