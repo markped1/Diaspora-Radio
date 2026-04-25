@@ -161,7 +161,16 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
     }
 
     setLoadStatus('Fetching through proxy...');
-    const proxied = await findWorkingProxy(url);
+    // Use Cloudflare page proxy (?page=) which strips X-Frame-Options
+    const cfProxy = (import.meta as any).env?.VITE_PROXY_URL || '';
+    let proxied: string;
+    if (cfProxy) {
+      proxied = `${cfProxy}?page=${encodeURIComponent(url)}`;
+      setProxyName('Cloudflare');
+    } else {
+      const result = await findWorkingProxy(url);
+      proxied = result;
+    }
     blobUrlRef.current = proxied;
     setIframeSrc(proxied);
     setProxyName(getCurrentProxyName());
