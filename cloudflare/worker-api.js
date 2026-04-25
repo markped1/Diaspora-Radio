@@ -29,8 +29,15 @@ async function handleRequest(request) {
   const qIndex = rawUrl.indexOf('?');
   const params = qIndex !== -1 ? new URLSearchParams(rawUrl.substring(qIndex + 1)) : new URLSearchParams();
 
-  const streamTarget = params.get('url');
-  const pageTarget = params.get('page');
+  // Also try direct string search as fallback
+  const streamTarget = params.get('url') || (() => {
+    const i = rawUrl.indexOf('?url=');
+    return i !== -1 ? decodeURIComponent(rawUrl.substring(i + 5).split('&')[0]) : null;
+  })();
+  const pageTarget = params.get('page') || (() => {
+    const i = rawUrl.indexOf('?page=');
+    return i !== -1 ? decodeURIComponent(rawUrl.substring(i + 6).split('&')[0]) : null;
+  })();
 
   // ── No target — health check ──────────────────────────────────────────────
   if (!streamTarget && !pageTarget) {
