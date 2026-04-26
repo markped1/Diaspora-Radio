@@ -14,6 +14,7 @@ interface IptvPlayerProps {
   url: string;
   muted?: boolean;
   autoPlay?: boolean;
+  seekTo?: number; // seconds to seek to on load
   onError?: () => void;
   onPlaying?: () => void;
   className?: string;
@@ -41,6 +42,7 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
   url,
   muted = false,
   autoPlay = true,
+  seekTo,
   onError,
   onPlaying,
   className = 'w-full h-full object-contain',
@@ -90,6 +92,10 @@ const IptvPlayer: React.FC<IptvPlayerProps> = ({
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         if (autoPlay) doPlay();
+        // Seek to sync position if provided
+        if (seekTo && seekTo > 0 && video) {
+          video.currentTime = seekTo;
+        }
       });
 
       hls.on(Hls.Events.ERROR, (_evt, data) => {

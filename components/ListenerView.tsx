@@ -34,15 +34,22 @@ function detectVideoFormat(url: string): 'hls' | 'youtube' | 'dailymotion' | 'tw
   return 'iframe'; // yallalive, sporticos, etc — try as iframe
 }
 
-function toEmbedUrl(url: string, format: string): string {
+function toEmbedUrl(url: string, format: string, seekSeconds?: number): string {
   if (format === 'youtube') {
-    // Already an embed URL — add controls=0 if not present
+    // Already an embed URL — add controls=0 and start= if not present
     if (url.includes('youtube.com/embed')) {
-      return url.includes('controls=') ? url : url + (url.includes('?') ? '&' : '?') + 'controls=0&modestbranding=1&rel=0';
+      let finalUrl = url.includes('controls=') ? url : url + (url.includes('?') ? '&' : '?') + 'controls=0&modestbranding=1&rel=0';
+      if (seekSeconds && seekSeconds > 0 && !url.includes('start=')) {
+        finalUrl += `&start=${Math.floor(seekSeconds)}`;
+      }
+      return finalUrl;
     }
     // Extract video ID
     const match = url.match(/(?:v=|youtu\.be\/|embed\/|live\/)([a-zA-Z0-9_-]{11})/);
-    if (match) return `https://www.youtube.com/embed/${match[1]}?autoplay=1&mute=0&controls=0&modestbranding=1&rel=0`;
+    if (match) {
+      const startParam = seekSeconds && seekSeconds > 0 ? `&start=${Math.floor(seekSeconds)}` : '';
+      return `https://www.youtube.com/embed/${match[1]}?autoplay=1&mute=0&controls=0&modestbranding=1&rel=0${startParam}`;
+    }
     // Channel URL — try live embed
     const chMatch = url.match(/youtube\.com\/@([a-zA-Z0-9_-]+)/);
     if (chMatch) return `https://www.youtube.com/embed/live_stream?channel=${chMatch[1]}&autoplay=1&controls=0&modestbranding=1&rel=0`;
@@ -91,8 +98,10 @@ const TvScreen = memo(({ currentAd, tvAudioOn, isRadioPlaying, nextAd }: {
 
   const embedUrl = useMemo(() => {
     if (!currentAd) return '';
-    return toEmbedUrl(currentAd.url, format);
-  }, [currentAd?.url, format]);
+    // Calculate elapsed time since video went live
+    const seekSeconds = currentAd.liveStartTime ? (Date.now() - currentAd.liveStartTime) / 1000 : 0;
+    return toEmbedUrl(currentAd.url, format, seekSeconds);
+  }, [currentAd?.url, currentAd?.liveStartTime, format]);
 
   // Control iframe volume via postMessage (YouTube, Dailymotion, Vimeo)
   useEffect(() => {
@@ -121,7 +130,8 @@ const TvScreen = memo(({ currentAd, tvAudioOn, isRadioPlaying, nextAd }: {
 
   // ── HLS / IPTV ──
   if (format === 'hls') {
-    return <IptvPlayer url={currentAd.url} muted={!tvHasAudio} autoPlay className="w-full h-full object-contain" />;
+    const seekSeconds = currentAd.liveStartTime ? (Date.now() - currentAd.liveStartTime) / 1000 : 0;
+    return <IptvPlayer url={currentAd.url} muted={!tvHasAudio} autoPlay className="w-full h-full object-contain" seekTo={seekSeconds > 0 ? seekSeconds : undefined} />;
   }
 
   // ── Image ──
@@ -131,8 +141,18 @@ const TvScreen = memo(({ currentAd, tvAudioOn, isRadioPlaying, nextAd }: {
 
   // ── Direct MP4/WebM ──
   if (format === 'mp4') {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const seekSeconds = currentAd.liveStartTime ? (Date.now() - currentAd.liveStartTime) / 1000 : 0;
+    
+    useEffect(() => {
+      if (videoRef.current && seekSeconds > 0) {
+        videoRef.current.currentTime = seekSeconds;
+      }
+    }, [seekSeconds]);
+
     return (
       <video
+        ref={videoRef}
         key={currentAd.id}
         src={currentAd.url}
         className="w-full h-full object-contain"

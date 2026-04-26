@@ -19,6 +19,7 @@ export interface MediaFile {
   timestamp: number;
   likes?: number;
   isLive?: boolean;
+  liveStartTime?: number; // Unix timestamp when video went live (for sync)
   caption?: string;
   sponsorName?: string;
   youtubeId?: string; // YouTube video/stream ID

@@ -159,11 +159,13 @@ const TvMonitor: React.FC<TvMonitorProps> = ({ mediaList, onMediaUpdated }) => {
     if (!selected) return;
     setIsSaving(true);
     try {
+      const liveStartTime = Date.now(); // timestamp when video goes live
       for (const item of videoMedia) {
         const updated = { ...item, isLive: item.id === selected.id };
         if (item.id === selected.id) {
           updated.caption = caption.trim();
           updated.sponsorName = sponsorName.trim();
+          updated.liveStartTime = liveStartTime; // sync timestamp
         }
         await dbService.updateMedia(updated);
       }
