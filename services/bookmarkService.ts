@@ -7,7 +7,7 @@
  */
 
 const PROXY = (import.meta as any).env?.VITE_PROXY_URL || '';
-const STORAGE_KEY = 'ndr_bookmarks_v2';
+const STORAGE_KEY = 'ndr_bookmarks_v3';
 const CHECK_TIMEOUT_MS = 8000;
 
 export interface Bookmark {
@@ -124,33 +124,35 @@ export const BOOKMARK_DEFINITIONS: Array<{
   },
 ];
 
-// ── Ping a URL through the proxy — returns true if reachable ─────────────────
+// ── Ping a URL — returns true if reachable, defaults to true on ambiguous errors ─
 async function ping(url: string): Promise<boolean> {
   try {
-    const probeUrl = PROXY
-      ? `${PROXY.replace(/\/$/, '')}?url=${encodeURIComponent(url)}`
-      : url;
-
-    const res = await fetch(probeUrl, {
-      method: 'HEAD',
-      signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+    // Try a no-cors fetch — won't give us response details but won't throw on CORS blocks
+    // A DNS failure or connection refused WILL throw
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
+    await fetch(url, {
+      method: 'GET',
+      mode: 'no-cors',       // avoids CORS errors — we just want to know if server exists
+      signal: controller.signal,
       cache: 'no-store',
     });
-    return res.ok || res.status === 405; // 405 = Method Not Allowed but server is alive
-  } catch {
-    // HEAD blocked — try GET with a short timeout
-    try {
-      const probeUrl = PROXY
-        ? `${PROXY.replace(/\/$/, '')}?url=${encodeURIComponent(url)}`
-        : url;
-      const res = await fetch(probeUrl, {
-        signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
-        cache: 'no-store',
-      });
-      return res.ok;
-    } catch {
+    clearTimeout(timer);
+    return true; // no-cors fetch resolves (even opaque) = server is alive
+  } catch (err: any) {
+    const msg = (err?.message || '').toLowerCase();
+    // Only mark dead on clear DNS/network failure
+    if (
+      msg.includes('failed to fetch') ||
+      msg.includes('networkerror') ||
+      msg.includes('net::err') ||
+      msg.includes('aborted') ||
+      err?.name === 'AbortError'
+    ) {
       return false;
     }
+    // Any other error (CORS, 4xx, 5xx) = server exists, just blocks us
+    return true;
   }
 }
 
@@ -160,6 +162,8 @@ export function loadSavedBookmarks(): Bookmark[] | null {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed: Bookmark[] = JSON.parse(raw);
+    // Reject cache if all entries are dead (bad check result)
+    if (parsed.every(b => b.status === 'dead')) { localStorage.removeItem(STORAGE_KEY); return null; }
     // Invalidate cache older than 6 hours
     const sixHours = 6 * 60 * 60 * 1000;
     if (parsed[0]?.lastChecked && Date.now() - parsed[0].lastChecked > sixHours) return null;
