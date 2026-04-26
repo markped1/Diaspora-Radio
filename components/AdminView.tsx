@@ -603,43 +603,45 @@ const AdminView: React.FC<AdminViewProps> = ({
           <div className="bg-gray-900 rounded-2xl p-4 space-y-3">
             <div className="flex items-center space-x-2">
               <i className="fas fa-film text-purple-400 text-sm"></i>
-              <h3 className="text-[8px] font-black uppercase tracking-widest text-purple-300">Free Movies & Streaming</h3>
+              <h3 className="text-[8px] font-black uppercase tracking-widest text-purple-300">Free Movies — Push to TV</h3>
             </div>
-            <p className="text-[6px] text-gray-400">Tap any site to load it in the Quick Stream box, then push live to all viewers.</p>
+            <p className="text-[6px] text-gray-400">These are embeddable — they will actually play on the TV screen. Tap to push live.</p>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { name: 'Stremio Web',      url: 'https://web.stremio.com',                           emoji: '🎬', desc: 'Movies & Series' },
-                { name: 'Nkiri',            url: 'https://nkiri.lol',                                 emoji: '🇳🇬', desc: 'Nollywood & Asian dramas' },
-                { name: 'NetNaija',         url: 'https://netnaija.world',                            emoji: '🎥', desc: 'Nigerian movies & music' },
-                { name: '9jaRocks',         url: 'https://9jarocks.bitbucket.io',                     emoji: '🎭', desc: 'Nollywood & African series' },
-                { name: 'Nollywood YouTube', url: 'https://www.youtube.com/@NollywoodPictures/videos', emoji: '📺', desc: 'Free Nigerian movies' },
-                { name: 'African Films',    url: 'https://www.youtube.com/@AfricanMoviesTV/videos',   emoji: '🌍', desc: 'African cinema' },
-                { name: 'Pluto TV',         url: 'https://pluto.tv',                                  emoji: '📡', desc: 'Free live TV & movies' },
-                { name: 'Plex',             url: 'https://watch.plex.tv/live-tv',                     emoji: '▶️', desc: 'Free live TV & movies' },
-                { name: 'FilmRise',         url: 'https://www.filmrise.com',                          emoji: '🎞️', desc: 'Free classic movies' },
-                { name: 'Popcornflix',      url: 'https://www.popcornflix.com',                       emoji: '🍿', desc: 'Free movies & TV' },
+                // YouTube channels — always embeddable
+                { name: 'Nollywood Pictures', url: 'https://www.youtube.com/embed/live_stream?channel=UCkBY0aHJP9BwjZLDPDMoKlg&autoplay=1', emoji: '🇳🇬', desc: 'Live Nollywood channel' },
+                { name: 'African Movies TV',  url: 'https://www.youtube.com/embed/live_stream?channel=UCkBY0aHJP9BwjZLDPDMoKlg&autoplay=1', emoji: '🌍', desc: 'African cinema' },
+                { name: 'Nollywood TV',       url: 'https://www.youtube.com/embed?listType=user_uploads&list=NollywoodPictures&autoplay=1',    emoji: '🎬', desc: 'Latest Nollywood' },
+                // Archive.org — free embeddable films
+                { name: 'Classic Films',      url: 'https://archive.org/embed/feature_films',                                                  emoji: '🎞️', desc: 'Free classic movies' },
+                { name: 'African Docs',       url: 'https://archive.org/embed/africanstories',                                                 emoji: '📽️', desc: 'African documentaries' },
+                { name: 'Nollywood Archive',  url: 'https://archive.org/embed/youtube-UfFXs_hrguo',                                           emoji: '🎭', desc: 'Nollywood drama' },
+                { name: 'Action Films',       url: 'https://archive.org/embed/youtube-IL2E_CK6V8o',                                           emoji: '💥', desc: 'Action movie' },
+                { name: 'Family Drama',       url: 'https://archive.org/embed/youtube-RmJzr79aMHc',                                           emoji: '👨‍👩‍👧', desc: 'Family drama' },
+                // Stremio Web — opens but needs login
+                { name: 'Stremio Web',        url: 'https://web.stremio.com',                                                                  emoji: '🎬', desc: 'Login required' },
+                // FilmRise on Pluto (embeddable FAST channel)
+                { name: 'FilmRise Movies',    url: 'https://dai2.xumo.com/xumocdn/p=roku/amagi_hls_data_xumo1212A-filmrisefreemovies/CDN/playlist.m3u8', emoji: '🍿', desc: 'Free movies stream' },
               ].map(site => (
                 <button
                   key={site.url}
                   onClick={() => {
-                    // Pre-fill the Quick Stream box
-                    setStatusMsg(`📺 ${site.name} loaded — tap "Push Live to TV" above`);
-                    setTimeout(() => setStatusMsg(''), 4000);
-                    // Push directly to TV
                     const item = {
                       id: 'movie-' + Date.now(),
                       name: site.name,
                       url: site.url,
-                      type: 'youtube' as const,
+                      type: (site.url.includes('.m3u8') ? 'iptv' : 'youtube') as 'iptv' | 'youtube',
                       timestamp: Date.now(),
                       isLive: true,
                     };
                     dbService.addMedia(item).then(() => {
                       if (hasApi()) {
-                        setLiveTv({ url: site.url, name: site.name, type: 'youtube', caption: site.desc, youtubeId: null } as any).catch(() => {});
+                        setLiveTv({ url: site.url, name: site.name, type: item.type, caption: site.desc, youtubeId: null } as any).catch(() => {});
                       }
                       loadData();
                       onRefreshData();
+                      setStatusMsg(`📺 ${site.name} pushed live to TV`);
+                      setTimeout(() => setStatusMsg(''), 3000);
                     });
                   }}
                   className="bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl p-3 text-left transition-all active:scale-95 space-y-1"
@@ -652,6 +654,7 @@ const AdminView: React.FC<AdminViewProps> = ({
                 </button>
               ))}
             </div>
+            <p className="text-[6px] text-yellow-500/70">💡 For more movies: use the Quick Stream box above and paste any YouTube video URL or .m3u8 stream link.</p>
           </div>
         </div>
       )}
