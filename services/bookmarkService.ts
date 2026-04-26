@@ -7,7 +7,7 @@
  */
 
 const PROXY = (import.meta as any).env?.VITE_PROXY_URL || '';
-const STORAGE_KEY = 'ndr_bookmarks_v3';
+const STORAGE_KEY = 'ndr_bookmarks_v4';
 const CHECK_TIMEOUT_MS = 8000;
 
 export interface Bookmark {
@@ -98,28 +98,6 @@ export const BOOKMARK_DEFINITIONS: Array<{
     candidates: [
       'https://sporticos.com/en-gb',
       'https://www.sporticos.com',
-    ],
-  },
-  {
-    name: 'Live Soccer TV',
-    logo: '📺',
-    candidates: [
-      'https://www.livesoccertv.com',
-    ],
-  },
-  {
-    name: 'Ronaldo7',
-    logo: '⭐',
-    candidates: [
-      'https://www.ronaldo7.com',
-      'https://ronaldo7.net',
-    ],
-  },
-  {
-    name: 'FIFA+',
-    logo: '🌍',
-    candidates: [
-      'https://www.fifa.com/fifaplus',
     ],
   },
 ];
