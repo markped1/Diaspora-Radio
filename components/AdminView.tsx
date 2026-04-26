@@ -599,63 +599,6 @@ const AdminView: React.FC<AdminViewProps> = ({
 
           <TvMonitor mediaList={mediaList} onMediaUpdated={async () => { await loadData(); onRefreshData(); }} />
 
-          {/* ── FREE MOVIES & STREAMING SITES ── */}
-          <div className="bg-gray-900 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center space-x-2">
-              <i className="fas fa-film text-purple-400 text-sm"></i>
-              <h3 className="text-[8px] font-black uppercase tracking-widest text-purple-300">Free Movies — Push to TV</h3>
-            </div>
-            <p className="text-[6px] text-gray-400">These are embeddable — they will actually play on the TV screen. Tap to push live.</p>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                // YouTube channels — always embeddable
-                { name: 'Nollywood Pictures', url: 'https://www.youtube.com/embed/live_stream?channel=UCkBY0aHJP9BwjZLDPDMoKlg&autoplay=1', emoji: '🇳🇬', desc: 'Live Nollywood channel' },
-                { name: 'African Movies TV',  url: 'https://www.youtube.com/embed/live_stream?channel=UCkBY0aHJP9BwjZLDPDMoKlg&autoplay=1', emoji: '🌍', desc: 'African cinema' },
-                { name: 'Nollywood TV',       url: 'https://www.youtube.com/embed?listType=user_uploads&list=NollywoodPictures&autoplay=1',    emoji: '🎬', desc: 'Latest Nollywood' },
-                // Archive.org — free embeddable films
-                { name: 'Classic Films',      url: 'https://archive.org/embed/feature_films',                                                  emoji: '🎞️', desc: 'Free classic movies' },
-                { name: 'African Docs',       url: 'https://archive.org/embed/africanstories',                                                 emoji: '📽️', desc: 'African documentaries' },
-                { name: 'Nollywood Archive',  url: 'https://archive.org/embed/youtube-UfFXs_hrguo',                                           emoji: '🎭', desc: 'Nollywood drama' },
-                { name: 'Action Films',       url: 'https://archive.org/embed/youtube-IL2E_CK6V8o',                                           emoji: '💥', desc: 'Action movie' },
-                { name: 'Family Drama',       url: 'https://archive.org/embed/youtube-RmJzr79aMHc',                                           emoji: '👨‍👩‍👧', desc: 'Family drama' },
-                // Stremio Web — opens but needs login
-                { name: 'Stremio Web',        url: 'https://web.stremio.com',                                                                  emoji: '🎬', desc: 'Login required' },
-                // FilmRise on Pluto (embeddable FAST channel)
-                { name: 'FilmRise Movies',    url: 'https://dai2.xumo.com/xumocdn/p=roku/amagi_hls_data_xumo1212A-filmrisefreemovies/CDN/playlist.m3u8', emoji: '🍿', desc: 'Free movies stream' },
-              ].map(site => (
-                <button
-                  key={site.url}
-                  onClick={() => {
-                    const item = {
-                      id: 'movie-' + Date.now(),
-                      name: site.name,
-                      url: site.url,
-                      type: (site.url.includes('.m3u8') ? 'iptv' : 'youtube') as 'iptv' | 'youtube',
-                      timestamp: Date.now(),
-                      isLive: true,
-                    };
-                    dbService.addMedia(item).then(() => {
-                      if (hasApi()) {
-                        setLiveTv({ url: site.url, name: site.name, type: item.type, caption: site.desc, youtubeId: null } as any).catch(() => {});
-                      }
-                      loadData();
-                      onRefreshData();
-                      setStatusMsg(`📺 ${site.name} pushed live to TV`);
-                      setTimeout(() => setStatusMsg(''), 3000);
-                    });
-                  }}
-                  className="bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl p-3 text-left transition-all active:scale-95 space-y-1"
-                >
-                  <div className="flex items-center space-x-2">
-                    <span className="text-lg">{site.emoji}</span>
-                    <p className="text-[8px] font-black text-white truncate">{site.name}</p>
-                  </div>
-                  <p className="text-[6px] text-gray-400">{site.desc}</p>
-                </button>
-              ))}
-            </div>
-            <p className="text-[6px] text-yellow-500/70">💡 For more movies: use the Quick Stream box above and paste any YouTube video URL or .m3u8 stream link.</p>
-          </div>
         </div>
       )}
 
