@@ -1,13 +1,11 @@
 /**
  * NDR CORS + Frame Proxy — Cloudflare Worker
  *
- * Two modes:
- * 1. ?url=https://stream.m3u8  → IPTV/HLS proxy (strips CORS, rewrites segments)
- * 2. ?page=https://site.com    → Full page proxy (strips X-Frame-Options, CSP frame-ancestors)
- *
- * Usage:
- *   IPTV:  https://worker.dev/?url=https://stream.example.com/live.m3u8
- *   Page:  https://worker.dev/?page=https://daddyhd.com
+ * Routes:
+ * /page/<url>  → Full page proxy (strips X-Frame-Options, injects Push Live button)
+ * /url/<url>   → IPTV/HLS stream proxy (strips CORS, rewrites m3u8 segments)
+ * ?url=<url>   → Legacy stream proxy (backward compat)
+ * ?page=<url>  → Legacy page proxy (backward compat, used by in-page navigation)
  */
 
 addEventListener('fetch', event => {
@@ -27,50 +25,46 @@ async function handleRequest(request) {
 
   const rawUrl = request.url;
   const urlObj = new URL(rawUrl);
-  const pathname = urlObj.pathname; // e.g. /page/https://daddyhd.com or /url/https://stream.m3u8
+  const pathname = urlObj.pathname;
+  const workerBase = rawUrl.split('?')[0].replace(/\/$/, '');
 
-  // Support path-based routing: /page/<target> or /url/<target>
   let streamTarget = null;
   let pageTarget = null;
 
+  // Path-based routing: /page/<target> or /url/<target>
   if (pathname.startsWith('/page/')) {
     pageTarget = decodeURIComponent(pathname.substring(6));
   } else if (pathname.startsWith('/url/')) {
     streamTarget = decodeURIComponent(pathname.substring(5));
   } else {
-    // Fallback: query string (for backward compat)
-    const qIndex = rawUrl.indexOf('?');
-    if (qIndex !== -1) {
-      const qs = rawUrl.substring(qIndex + 1);
-      const urlIdx = qs.indexOf('url=');
-      const pageIdx = qs.indexOf('page=');
-      if (pageIdx !== -1) pageTarget = decodeURIComponent(qs.substring(pageIdx + 5).split('&')[0]);
-      else if (urlIdx !== -1) streamTarget = decodeURIComponent(qs.substring(urlIdx + 4).split('&')[0]);
-    }
+    // Query string fallback (used by in-page link navigation: ?page=... or ?url=...)
+    const qs = urlObj.search.substring(1);
+    const params = new URLSearchParams(qs);
+    if (params.has('page')) pageTarget = params.get('page');
+    else if (params.has('url')) streamTarget = params.get('url');
   }
 
-  // ── No target — health check ──────────────────────────────────────────────
+  // ── Health check ──────────────────────────────────────────────────────────
   if (!streamTarget && !pageTarget) {
-    return new Response('NDR Proxy OK\n?url= for IPTV streams\n?page= for web pages', {
+    return new Response('NDR Proxy OK\n/page/<url> for web pages\n/url/<url> for IPTV streams', {
       status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'text/plain' },
     });
   }
 
-  // ── PAGE PROXY — strips X-Frame-Options and CSP frame-ancestors ───────────
+  // ── PAGE PROXY ────────────────────────────────────────────────────────────
   if (pageTarget) {
     if (!pageTarget.startsWith('http')) {
       return new Response('Invalid URL', { status: 400, headers: CORS_HEADERS });
     }
     try {
       const targetOrigin = new URL(pageTarget).origin;
-      const workerBase = rawUrl.split('?')[0];
 
       const upstream = await fetch(pageTarget, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.5',
-          'Referer': targetOrigin,
+          'Referer': targetOrigin + '/',
         },
         redirect: 'follow',
       });
@@ -78,26 +72,52 @@ async function handleRequest(request) {
       const contentType = upstream.headers.get('content-type') || 'text/html';
       let body = await upstream.text();
 
-      // Inject a <base> tag so relative URLs resolve correctly against the target origin
-      // Also inject a script to intercept link clicks and route through proxy
-      const baseTag = `<base href="${targetOrigin}/">`;
-      const interceptScript = `<script>
-        (function(){
-          // Proxy all fetch/XHR requests
-          var proxyBase = '${workerBase}?page=';
-          // Override link clicks to stay in proxy
-          document.addEventListener('click', function(e){
-            var a = e.target.closest('a');
-            if(a && a.href && a.href.startsWith('http') && !a.href.includes('${workerBase}')){
-              e.preventDefault();
-              window.location.href = proxyBase + encodeURIComponent(a.href);
-            }
-          }, true);
-        })();
-      </script>`;
+      // Inject base tag + link interceptor + floating Push Live button
+      const inject = `<base href="${targetOrigin}/">
+<script>
+(function(){
+  var WB = '${workerBase}';
 
-      // Insert base tag and intercept script into <head>
-      body = body.replace(/<head([^>]*)>/i, `<head$1>${baseTag}${interceptScript}`);
+  // Intercept all link clicks — route through proxy instead of opening new tab
+  document.addEventListener('click', function(e){
+    var a = e.target.closest('a');
+    if(a && a.href && a.href.startsWith('http') && !a.href.includes(WB)){
+      e.preventDefault();
+      e.stopPropagation();
+      // Post to parent (SportsTv iframe handler)
+      try { window.parent.postMessage({type:'NDR_NAVIGATE', url: a.href}, '*'); } catch(x){}
+    }
+  }, true);
+
+  // Block window.open — route through parent instead
+  window.open = function(u){ 
+    if(u) try { window.parent.postMessage({type:'NDR_NAVIGATE', url: u}, '*'); } catch(x){}
+    return null; 
+  };
+
+  // Floating Push Live button
+  function addPushBtn(){
+    if(document.getElementById('ndr-push-btn')) return;
+    var btn = document.createElement('div');
+    btn.id = 'ndr-push-btn';
+    btn.innerHTML = '🔴 PUSH LIVE';
+    btn.style.cssText = 'position:fixed;bottom:20px;right:16px;z-index:2147483647;background:#e53e3e;color:#fff;font-weight:900;font-size:13px;padding:12px 20px;border-radius:50px;box-shadow:0 4px 24px rgba(0,0,0,0.6);cursor:pointer;letter-spacing:1px;border:2px solid #fff;font-family:sans-serif;';
+    btn.onclick = function(){
+      try { window.parent.postMessage({type:'NDR_PUSH_LIVE', url: window.location.href}, '*'); } catch(x){}
+      btn.innerHTML = '✅ PUSHED!';
+      btn.style.background = '#38a169';
+      setTimeout(function(){ btn.innerHTML = '🔴 PUSH LIVE'; btn.style.background = '#e53e3e'; }, 2000);
+    };
+    document.body ? document.body.appendChild(btn) : document.addEventListener('DOMContentLoaded', addPushBtn);
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addPushBtn);
+  else addPushBtn();
+})();
+<\/script>`;
+
+      body = body.replace(/<head([^>]*)>/i, `<head$1>${inject}`);
+      // If no <head>, prepend
+      if (!body.includes(inject)) body = inject + body;
 
       return new Response(body, {
         status: upstream.status,
@@ -105,7 +125,7 @@ async function handleRequest(request) {
           ...CORS_HEADERS,
           'Content-Type': contentType,
           'Cache-Control': 'no-cache',
-          // No X-Frame-Options, no CSP — stripped intentionally
+          // X-Frame-Options and CSP intentionally stripped
         },
       });
     } catch (err) {
@@ -115,7 +135,7 @@ async function handleRequest(request) {
     }
   }
 
-  // ── STREAM PROXY — IPTV/HLS m3u8 ─────────────────────────────────────────
+  // ── STREAM PROXY — IPTV/HLS ───────────────────────────────────────────────
   const target = streamTarget;
   if (!target.startsWith('http://') && !target.startsWith('https://')) {
     return new Response('Only http/https URLs allowed', {
@@ -141,7 +161,6 @@ async function handleRequest(request) {
 
     if (isM3u8) {
       const text = await upstream.text();
-      const workerBase = rawUrl.split('?')[0];
       const proxyBase = workerBase + '?url=';
 
       const rewritten = text.split('\n').map(line => {

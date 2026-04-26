@@ -208,12 +208,28 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
     loadUrl(finalUrl);
   }, [history, historyIndex, loadUrl]);
 
-  // Listen for navigation messages posted from inside the iframe
+  // Listen for navigation and Push Live messages posted from inside the iframe
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'NDR_NAVIGATE' && e.data?.url) {
         console.log('📡 Intercepted link:', e.data.url);
         navigate(e.data.url);
+      }
+      if (e.data?.type === 'NDR_PUSH_LIVE' && e.data?.url) {
+        console.log('🔴 Push Live from iframe:', e.data.url);
+        const ch: SportChannel = {
+          id: 'live-' + Math.random().toString(36).substr(2, 9),
+          name: 'Live Match',
+          url: e.data.url,
+          logo: '⚽', category: 'Football',
+          matchInfo: e.data.url, isLive: true,
+          timestamp: Date.now(),
+        };
+        dbService.saveSportChannel(ch).then(() => {
+          dbService.getSportChannels().then(setSavedMatches);
+          onPushLive(ch);
+          flash('🔴 Match pushed live to listeners!');
+        });
       }
     };
     window.addEventListener('message', handler);
@@ -455,14 +471,11 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
               {loadError && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 space-y-3 p-4 z-10">
                   <i className="fas fa-exclamation-triangle text-yellow-400 text-2xl"></i>
-                  <p className="text-[8px] font-black text-white uppercase text-center">Proxy failed for this site</p>
+                  <p className="text-[8px] font-black text-white uppercase text-center">Could not load this page</p>
                   <p className="text-[6px] text-gray-400 text-center leading-relaxed">
-                    Install the Android APK for full stream support. On PC, open in a new tab.
+                    Try a different site from the bookmarks above, or type a URL in the address bar.
                   </p>
-                  <div className="flex space-x-2">
-                    <button onClick={refresh} className="bg-green-600 text-white px-3 py-2 rounded-lg text-[7px] font-black uppercase">Retry</button>
-                    <button onClick={() => window.open(targetUrl, '_blank')} className="bg-yellow-500 text-black px-3 py-2 rounded-lg text-[7px] font-black uppercase">Open in Tab</button>
-                  </div>
+                  <button onClick={refresh} className="bg-green-600 text-white px-4 py-2 rounded-lg text-[7px] font-black uppercase">Retry</button>
                 </div>
               )}
 
