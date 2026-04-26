@@ -36,14 +36,16 @@ function detectVideoFormat(url: string): 'hls' | 'youtube' | 'dailymotion' | 'tw
 
 function toEmbedUrl(url: string, format: string): string {
   if (format === 'youtube') {
-    // Already an embed URL
-    if (url.includes('youtube.com/embed')) return url;
+    // Already an embed URL — add controls=0 if not present
+    if (url.includes('youtube.com/embed')) {
+      return url.includes('controls=') ? url : url + (url.includes('?') ? '&' : '?') + 'controls=0&modestbranding=1&rel=0';
+    }
     // Extract video ID
     const match = url.match(/(?:v=|youtu\.be\/|embed\/|live\/)([a-zA-Z0-9_-]{11})/);
-    if (match) return `https://www.youtube.com/embed/${match[1]}?autoplay=1&mute=0&rel=0`;
+    if (match) return `https://www.youtube.com/embed/${match[1]}?autoplay=1&mute=0&controls=0&modestbranding=1&rel=0`;
     // Channel URL — try live embed
     const chMatch = url.match(/youtube\.com\/@([a-zA-Z0-9_-]+)/);
-    if (chMatch) return `https://www.youtube.com/embed/live_stream?channel=${chMatch[1]}&autoplay=1`;
+    if (chMatch) return `https://www.youtube.com/embed/live_stream?channel=${chMatch[1]}&autoplay=1&controls=0&modestbranding=1&rel=0`;
     return url;
   }
   if (format === 'dailymotion') {
@@ -144,9 +146,16 @@ const TvScreen = memo(({ currentAd, tvAudioOn, isRadioPlaying, nextAd }: {
   }
 
   // ── All iframe-based players: YouTube, Dailymotion, Twitch, Vimeo, Facebook, generic ──
-  const iframeSrc = embedUrl.includes('?')
-    ? format === 'youtube' ? embedUrl + '&enablejsapi=1' : embedUrl
-    : format === 'youtube' ? embedUrl + '?enablejsapi=1' : embedUrl;
+  // Force autoplay and hide controls for listeners
+  let iframeSrc = embedUrl;
+  if (format === 'youtube') {
+    // Ensure autoplay=1, controls=0, mute=0 for seamless playback
+    iframeSrc = embedUrl.includes('?')
+      ? embedUrl + '&enablejsapi=1&autoplay=1&mute=0'
+      : embedUrl + '?enablejsapi=1&autoplay=1&mute=0';
+  } else {
+    iframeSrc = embedUrl.includes('?') ? embedUrl : embedUrl + '?autoplay=1';
+  }
 
   return (
     <iframe
