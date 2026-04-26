@@ -15,6 +15,12 @@ import {
   getProxiedUrl, markProxyFailed, markProxySuccess,
   getCurrentProxyName, findWorkingProxy,
 } from '../services/proxyService';
+import {
+  Bookmark,
+  checkAndHealBookmarks,
+  loadSavedBookmarks,
+  BOOKMARK_DEFINITIONS,
+} from '../services/bookmarkService';
 
 // Detect if running inside Capacitor (Android/iOS app)
 const isCapacitor = typeof (window as any).Capacitor !== 'undefined';
@@ -96,37 +102,29 @@ interface SportsTvProps {
   onPushLive: (channel: SportChannel) => void;
 }
 
-const BOOKMARKS = [
-  // ── Yalla variants ────────────────────────────────────────────────────────
-  { name: 'Yalla Live',     url: 'https://www.live-yalla.io',              logo: '⚽' },
-  { name: 'Yalla Shoot',    url: 'https://shoot-yalla.to',                 logo: '🎯' },
-  { name: 'Yalla Shoot 2',  url: 'https://eshoot.org',                     logo: '🥅' },
-  // ── Most reliable free football sites (2025/26) ───────────────────────────
-  { name: 'DaddyHD',        url: 'https://daddyhd.com',                    logo: '📺' },
-  { name: 'Streami',        url: 'https://streami.su/category/football',   logo: '🔴' },
-  { name: 'StreamEast',     url: 'https://v2.streameast.sk',               logo: '🌊' },
-  { name: 'Ronaldo7',       url: 'https://ronaldo7.soccer/soccer',         logo: '⭐' },
-  { name: 'Sportsurge',     url: 'https://sportsurge.ws',                  logo: '⚡' },
-  { name: 'VIP League',     url: 'https://vipleague.im/football',          logo: '👑' },
-  { name: 'Total Sportek',  url: 'https://www.total-sportek.to',           logo: '📡' },
-  { name: 'Sporticos',      url: 'https://sporticos.com/en-gb',            logo: '🏆' },
-  { name: 'Hesgoal',        url: 'https://hesgoals.mov/schedule',          logo: '🥅' },
-];
+// Default bookmarks (first candidate from each definition) — replaced by health-check results
+const DEFAULT_BOOKMARKS: Bookmark[] = BOOKMARK_DEFINITIONS.map(d => ({
+  name: d.name, logo: d.logo, url: d.candidates[0], status: 'unknown' as const,
+}));
 
 const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const retryCountRef = useRef(0);
-  const blobUrlRef = useRef<string>(''); // track blob URLs to revoke them
+  const blobUrlRef = useRef<string>('');
 
-  const [targetUrl, setTargetUrl] = useState('https://www.live-yalla.io');
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>(() => loadSavedBookmarks() || DEFAULT_BOOKMARKS);
+  const [checkingBookmarks, setCheckingBookmarks] = useState(false);
+  const [checkProgress, setCheckProgress] = useState('');
+
+  const [targetUrl, setTargetUrl] = useState('https://yallashoot.org');
   const [iframeSrc, setIframeSrc] = useState('');
-  const [addressBar, setAddressBar] = useState('https://www.live-yalla.io');
+  const [addressBar, setAddressBar] = useState('https://yallashoot.org');
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [proxyName, setProxyName] = useState('');
   const [retrying, setRetrying] = useState(false);
   const [loadStatus, setLoadStatus] = useState('');
-  const [history, setHistory] = useState<string[]>(['https://www.live-yalla.io']);
+  const [history, setHistory] = useState<string[]>(['https://yallashoot.org']);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [savedMatches, setSavedMatches] = useState<SportChannel[]>([]);
   const [saveLabel, setSaveLabel] = useState('');
@@ -137,6 +135,35 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
   useEffect(() => {
     dbService.getSportChannels().then(setSavedMatches);
   }, []);
+
+  // Auto health-check on mount — skip if cache is fresh (loadSavedBookmarks returned data)
+  useEffect(() => {
+    const cached = loadSavedBookmarks();
+    if (cached) { setBookmarks(cached); return; } // fresh cache — skip check
+    runHealthCheck();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const runHealthCheck = useCallback(async () => {
+    setCheckingBookmarks(true);
+    setCheckProgress('Checking links...');
+    const results = await checkAndHealBookmarks((name, status) => {
+      const icon = status === 'ok' ? '✅' : status === 'healed' ? '🔄' : status === 'dead' ? '❌' : '🔍';
+      setCheckProgress(`${icon} ${name}`);
+      if (status !== 'checking') {
+        setBookmarks(prev => prev.map(b =>
+          b.name === name
+            ? { ...b, status: status === 'healed' ? 'ok' : status === 'dead' ? 'dead' : 'ok' }
+            : b
+        ));
+      }
+    });
+    setBookmarks(results);
+    setCheckingBookmarks(false);
+    setCheckProgress('');
+    // Auto-navigate to first working bookmark
+    const first = results.find(b => b.status === 'ok');
+    if (first) { setTargetUrl(first.url); setAddressBar(first.url); loadUrl(first.url); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load a URL — native browser on Android, proxy iframe on PC
   const loadUrl = useCallback(async (url: string) => {
@@ -195,7 +222,7 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
 
   // Initial load
   useEffect(() => {
-    loadUrl('https://www.live-yalla.io');
+    loadUrl('https://yallashoot.org');
   }, []);
 
   const goBack = () => {
@@ -348,15 +375,31 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
         {/* Bookmarks */}
         <div className="px-2 py-1 flex space-x-1 overflow-x-auto no-scrollbar border-b border-gray-700"
           style={{ backgroundColor: '#1a1a2e' }}>
-          {BOOKMARKS.map(b => (
-            <button key={b.url} onClick={() => navigate(b.url)}
+          {bookmarks.map(b => (
+            <button key={b.url} onClick={() => b.status !== 'dead' && navigate(b.url)}
+              title={b.status === 'dead' ? `${b.name} — offline` : b.url}
               className={`shrink-0 flex items-center space-x-1 px-2 py-1 rounded-lg text-[6px] font-black uppercase transition-all ${
-                targetUrl.includes(b.url.replace('https://', '').split('/')[0])
-                  ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                b.status === 'dead'
+                  ? 'bg-red-900/40 text-red-400 cursor-not-allowed opacity-60'
+                  : targetUrl.includes(new URL(b.url).hostname)
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}>
-              <span>{b.logo}</span><span>{b.name}</span>
+              <span>{b.logo}</span>
+              <span>{b.name}</span>
+              {b.status === 'dead' && <span className="text-red-400">✕</span>}
+              {b.status === 'unknown' && checkingBookmarks && <span className="animate-pulse">·</span>}
             </button>
           ))}
+          {/* Re-check button */}
+          <button
+            onClick={runHealthCheck}
+            disabled={checkingBookmarks}
+            title="Re-check all links"
+            className="shrink-0 flex items-center space-x-1 px-2 py-1 rounded-lg text-[6px] font-black uppercase bg-blue-800 text-blue-200 hover:bg-blue-700 disabled:opacity-50">
+            <i className={`fas fa-sync-alt text-[7px] ${checkingBookmarks ? 'animate-spin' : ''}`} />
+            <span>{checkingBookmarks ? checkProgress || '...' : 'Check'}</span>
+          </button>
         </div>
 
         {/* Viewport — Android: native browser button | PC: proxy iframe */}

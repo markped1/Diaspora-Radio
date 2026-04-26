@@ -24,7 +24,9 @@ const PROXY_URL = import.meta.env.VITE_PROXY_URL || '';
 function proxyUrl(url: string): string {
   if (!PROXY_URL) return url;
   if (url.includes(PROXY_URL)) return url;
-  return `${PROXY_URL}?url=${encodeURIComponent(url)}`;
+  // Use path-based routing — Cloudflare strips query params
+  const base = PROXY_URL.endsWith('/') ? PROXY_URL.slice(0, -1) : PROXY_URL;
+  return `${base}/url/${encodeURIComponent(url)}`;
 }
 
 // Use proxy for all external streams — direct only for blob/data URLs

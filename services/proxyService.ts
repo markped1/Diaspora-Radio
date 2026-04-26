@@ -61,11 +61,12 @@ export function getProxiedUrl(targetUrl: string): string {
 export async function findWorkingProxy(targetUrl: string): Promise<string> {
   if (typeof (window as any).Capacitor !== 'undefined') return targetUrl;
 
-  // If Cloudflare Worker is configured — use it directly as iframe src
-  // The worker handles all sub-resources server-side
+  // If Cloudflare Worker is configured — use path-based /page/ routing
+  // (query params get stripped by Cloudflare, path-based works reliably)
   if (CF_WORKER) {
-    const workerUrl = `${CF_WORKER}?url=${encodeURIComponent(targetUrl)}`;
-    console.log(`🔄 Using Cloudflare Worker: ${workerUrl}`);
+    const base = CF_WORKER.endsWith('/') ? CF_WORKER.slice(0, -1) : CF_WORKER;
+    const workerUrl = `${base}/page/${encodeURIComponent(targetUrl)}`;
+    console.log(`🔄 Using Cloudflare Worker page proxy: ${workerUrl}`);
     currentIndex = 0;
     return workerUrl;
   }
