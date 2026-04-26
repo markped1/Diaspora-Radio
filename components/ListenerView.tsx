@@ -428,24 +428,7 @@ const ListenerView: React.FC<ListenerViewProps> = ({
         </div>
       </section>
 
-      {/* 4. GOOGLE ADS */}
-      <section className="space-y-1">
-        <div className="flex justify-between items-center px-1">
-          <h3 className="text-[7px] font-black uppercase text-gray-400 tracking-[0.2em]">Google Ads</h3>
-          <div className="flex items-center text-gray-300 text-[6px] space-x-1">
-            <i className="fas fa-info-circle"></i>
-            <span>AdChoices</span>
-          </div>
-        </div>
-        <div className="bg-gray-50 border border-gray-100 rounded-lg p-6 h-[135px] flex flex-col items-center justify-center text-center space-y-3 overflow-hidden relative group">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 via-red-400 to-yellow-400"></div>
-          <span className="text-[12px] font-black text-gray-800 uppercase tracking-wide">Premium African Fashion</span>
-          <span className="text-[9px] text-gray-500 font-medium leading-relaxed max-w-[80%]">Global shipping starting at $15. Shop the latest authentic styles direct from Lagos!</span>
-          <button className="bg-blue-600 text-white text-[8px] px-5 py-2 rounded-full font-black uppercase shadow-sm mt-1 hover:bg-blue-700 transition-colors">Shop Now</button>
-        </div>
-      </section>
-
-      {/* 5. LIVE COMMUNITY REPORTS */}
+      {/* 4. LIVE COMMUNITY REPORTS */}
       <section className="space-y-2">
         <div className="flex items-center justify-between px-1">
            <h3 className="text-[7px] font-black uppercase text-green-600/40 tracking-[0.2em]">Live Community Reports</h3>
@@ -559,31 +542,24 @@ const ListenerView: React.FC<ListenerViewProps> = ({
           <p className="text-[7px] font-black uppercase tracking-widest text-green-700 text-center">Get the App</p>
           <p className="text-[6px] text-green-600/50 text-center">Full radio, TV, sports & live news</p>
 
-          {/* Android */}
-          <a
-            href="https://github.com/markped1/Diaspora-Radio/releases/latest/download/app-debug.apk"
-            className="flex items-center justify-between w-full bg-gray-950 text-white py-3 px-4 rounded-2xl shadow-lg active:scale-95 transition-all"
-          >
-            <div className="flex items-center space-x-3">
-              <i className="fab fa-android text-2xl text-green-400"></i>
-              <div className="text-left">
-                <p className="text-[6px] text-gray-400 uppercase tracking-widest">Download for</p>
-                <p className="text-[12px] font-black uppercase">Android</p>
-              </div>
-            </div>
-            <i className="fas fa-download text-gray-400"></i>
-          </a>
+          {/* Android & iOS on same line */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Android */}
+            <a
+              href="https://github.com/markped1/Diaspora-Radio/releases/latest/download/app-debug.apk"
+              className="flex flex-col items-center justify-center bg-gray-950 text-white py-3 px-2 rounded-xl shadow-lg active:scale-95 transition-all"
+            >
+              <i className="fab fa-android text-xl text-green-400 mb-1"></i>
+              <p className="text-[6px] text-gray-400 uppercase tracking-widest">Download</p>
+              <p className="text-[9px] font-black uppercase">Android</p>
+            </a>
 
-          {/* iOS — coming soon */}
-          <div className="flex items-center justify-between w-full bg-gray-100 text-gray-400 py-3 px-4 rounded-2xl">
-            <div className="flex items-center space-x-3">
-              <i className="fab fa-apple text-2xl text-gray-400"></i>
-              <div className="text-left">
-                <p className="text-[6px] text-gray-400 uppercase tracking-widest">Coming soon</p>
-                <p className="text-[12px] font-black uppercase text-gray-500">iOS / iPhone</p>
-              </div>
+            {/* iOS — coming soon */}
+            <div className="flex flex-col items-center justify-center bg-gray-100 text-gray-400 py-3 px-2 rounded-xl">
+              <i className="fab fa-apple text-xl text-gray-400 mb-1"></i>
+              <p className="text-[6px] text-gray-400 uppercase tracking-widest">Coming</p>
+              <p className="text-[9px] font-black uppercase text-gray-500">iOS</p>
             </div>
-            <span className="text-[6px] font-black uppercase bg-gray-200 text-gray-500 px-2 py-1 rounded-full">Soon</span>
           </div>
         </div>
 
