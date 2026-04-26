@@ -618,8 +618,6 @@ const AdminView: React.FC<AdminViewProps> = ({
                 { name: 'Nollywood Archive',  url: 'https://archive.org/embed/youtube-UfFXs_hrguo',                                           emoji: '🎭', desc: 'Nollywood drama' },
                 { name: 'Action Films',       url: 'https://archive.org/embed/youtube-IL2E_CK6V8o',                                           emoji: '💥', desc: 'Action movie' },
                 { name: 'Family Drama',       url: 'https://archive.org/embed/youtube-RmJzr79aMHc',                                           emoji: '👨‍👩‍👧', desc: 'Family drama' },
-                // Stremio Web — opens but needs login
-                { name: 'Stremio Web',        url: 'https://web.stremio.com',                                                                  emoji: '🎬', desc: 'Login required' },
                 // FilmRise on Pluto (embeddable FAST channel)
                 { name: 'FilmRise Movies',    url: 'https://dai2.xumo.com/xumocdn/p=roku/amagi_hls_data_xumo1212A-filmrisefreemovies/CDN/playlist.m3u8', emoji: '🍿', desc: 'Free movies stream' },
               ].map(site => (
