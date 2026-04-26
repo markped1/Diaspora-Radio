@@ -94,7 +94,6 @@ async function handleRequest(request) {
     if(u) try { window.parent.postMessage({type:'NDR_NAVIGATE', url: u}, '*'); } catch(x){}
     return null; 
   };
-
   // Floating Push Live button
   function addPushBtn(){
     if(document.getElementById('ndr-push-btn')) return;
@@ -118,6 +117,8 @@ async function handleRequest(request) {
       body = body.replace(/<head([^>]*)>/i, `<head$1>${inject}`);
       // If no <head>, prepend
       if (!body.includes(inject)) body = inject + body;
+      // Strip all target="_blank" so links can't escape the iframe
+      body = body.replace(/target\s*=\s*["']_blank["']/gi, 'target="_self"');
 
       return new Response(body, {
         status: upstream.status,

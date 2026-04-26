@@ -487,6 +487,7 @@ const SportsTv: React.FC<SportsTvProps> = ({ onPushLive }) => {
                   src={iframeSrc}
                   className="w-full h-full border-0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups-to-escape-sandbox"
                   allowFullScreen
                   referrerPolicy="no-referrer"
                   title="Football Browser"
